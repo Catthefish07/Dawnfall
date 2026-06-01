@@ -43,7 +43,7 @@ void Inventory::useItem(string itemName, Character* c){
     for(Item& i : items) {
         if(i.name == itemName && i.quantity > 0 && i.isOwned == true){
         if(i.name == "Revive Stone") {
-                c -> heal(c -> getMaxHp() * 0.5); // if already have func for this, can replace (?)
+                c -> heal(c -> getMaxHP() * 0.5); // if already have func for this, can replace (?)
             removeItems(itemName, 1);
             cout << "You revived! Restore 50% health points!" << endl;
         } else if(i.name == "Health Potion" || i.name == "Mega Potion") {
