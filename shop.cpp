@@ -120,7 +120,7 @@ vector<CharacterShop> Shop::getCharacterStock() const{
 
 void Shop::setCharacterUnlocked(int index, bool unlocked){
     if(index < 0 || index >= (int)characterStock.size())
-        return characterStock[index].isOwned = unlocked; // index based on the list declared before in characterStock
+        characterStock[index].isOwned = unlocked; // index based on the list declared before in characterStock
 }
 
 bool Shop::getCharacterUnlocked(int index) const{
