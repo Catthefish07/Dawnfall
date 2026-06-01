@@ -14,7 +14,7 @@ public:
     Inventory();
     void addItems(Item);
     void removeItems(string, int);
-    void useItem(string, Character*);
+    void useItem(string, class Character*);
     int getQuantity(string); // tracks quantity of items in shop
     void displayInventory();
     vector<Item> getItems();
