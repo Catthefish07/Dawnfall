@@ -2,7 +2,7 @@
 #include <iostream>
 using namespace std;
 
-Shop::Shop() {
+Shop::Shop(){
     loadCharacterStock();
 }
 
@@ -16,11 +16,11 @@ void Shop::loadCharacterStock() {
         {"Cedric", 500, 2, false, false},
         {"Kae", 500, 3, false, false},
         {"Zey", 500, 3, false, false},
-        {"Anak Agung", 2000, 4, false, false},
-        };
+        {"Anak Agung", 2000, 4, false, false}
+    };
 }
 
-bool Shop::buyItem(string itemName, int qty, Inventory& iv, int& playerCoins){
+bool Shop::buyItem(string itemName, int qty, Inventory& iv){
     if(qty < 1){
         cout << "You can't buy 0 items :(" << endl;
         return false;
@@ -29,41 +29,39 @@ bool Shop::buyItem(string itemName, int qty, Inventory& iv, int& playerCoins){
         return false;
     }
 
-    vector<Item> itemStock = listOfItems();
-for(Item& i : itemStock){
-    if(i.name == itemName){
-        int totalCost = i.price * qty;
+    for(Item& i : itemStock){
+        if(i.name == itemName){
+            int totalCost = i.price * qty;
 
-        if(playerCoins < totalCost){
-            cout << "Not enough coins!" << endl;
-            return false;
+            if(iv.getCoins() < totalCost){
+                cout << "Not enough coins!" << endl;
+                return false;
+            }
+
+            int totalOwned = iv.getQuantity("Health Potion") + iv.getQuantity("Mega Potion") + iv.getQuantity("Revive Stone");
+
+            if(totalOwned + qty > maxQuantity){
+                cout << "Inventory already full!" << endl;
+                return false;
+            }
+
+            iv.spendCoins(totalCost); // minus total cost from total coins player had
+
+            Item add = i; // copy of i from the vector, same properties
+            add.quantity = 1; // set quantity to 1
+            for(int j = 0; j < qty; j++){
+                iv.addItems(add); // add 1 each loop
+            }
+            cout << itemName << " " << qty << "x purchased!" << endl;
+            return true;
         }
-
-        int totalOwned = iv.getQuantity("Health Potion") + iv.getQuantity("Mega Potion") + iv.getQuantity("Revive Stone");
-
-        if(totalOwned + qty > maxQuantity){
-            totalOwned = totalOwned;
-            cout << "Inventory already full!" << endl;
-            return false;
-        }
-
-        playerCoins -= totalCost; // minus total cost from total coins player had
-
-        Item add = i; // copy of i from the vector, same properties
-        add.quantity = 1; // set quantity to 1
-        for(int j = 0; j < qty; j++){
-            iv.addItems(add); // add 1 each loop
-        }
-        cout << itemName << " " << qty << "x purchased!" << endl;
-        return true;
     }
+
+    cout << itemName << " not valid!" << endl;
+    return false;
 }
 
-cout << itemName << " not valid!" << endl;
-return false;
-}
-
-bool Shop::buyCharacter(string characterName, int& playerCoins, int currentWorld){
+bool Shop::buyCharacter(string characterName, Inventory& iv, int currentWorld){
     for(CharacterShop& c : characterStock){ // loops through each character in shop
         if(c.name == characterName){
             if(c.isOwned == true){
@@ -74,11 +72,11 @@ bool Shop::buyCharacter(string characterName, int& playerCoins, int currentWorld
                 cout << c.name << " is locked. Need to clear world " << c.worldRequired << " first!" << endl;
                 return false;
             }
-            if(playerCoins < c.price){
+            if(iv.getCoins() < c.price){
                 cout << "Not enough coins!" << endl;
                 return false;
             }
-            playerCoins -= c.price; // playerCoins automatically minus the character price if can buy
+            iv.spendCoins(c.price); // playerCoins automatically minus the character price if can buy
             c.isOwned = true;
             cout << c.name << " unlocked!" << endl;
             return true;
@@ -119,8 +117,10 @@ vector<CharacterShop> Shop::getCharacterStock() const{
 }
 
 void Shop::setCharacterUnlocked(int index, bool unlocked){
-    if(index < 0 || index >= (int)characterStock.size())
-        return characterStock[index].isOwned = unlocked; // index based on the list declared before in characterStock
+    if(index < 0 || index >= (int)characterStock.size()){
+        return;
+    }
+    characterStock[index].isOwned = unlocked; // index based on the list declared before in characterStock
 }
 
 bool Shop::getCharacterUnlocked(int index) const{
@@ -128,4 +128,3 @@ bool Shop::getCharacterUnlocked(int index) const{
         return false; // if index doesnt match any character
     return characterStock[index].isOwned;
 }
-
