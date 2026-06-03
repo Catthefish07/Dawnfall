@@ -19,7 +19,7 @@ public:
 
     Character* chooseTarget(const vector<Character*>& party) override;
 
-    void reduceCooldowns();
+    void reduceCooldowns() override;
 };
 
 #endif
