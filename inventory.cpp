@@ -41,20 +41,29 @@ void Inventory::removeItems(string itemName, int quantity){
 
 void Inventory::useItem(string itemName, Character* c){
     for(Item& i : items) {
-        if(i.name == itemName && i.quantity > 0 && i.isOwned == true){
-        if(i.name == "Revive Stone") {
-                c -> heal(c -> getMaxHp() * 0.5); // if already have func for this, can replace (?)
-            removeItems(itemName, 1);
-            cout << "You revived! Restore 50% health points!" << endl;
-        } else if(i.name == "Health Potion" || i.name == "Mega Potion") {
-            c -> heal(i.effect);
-            removeItems(itemName, 1);
-            cout << itemName << " used, restores" << i.effect << "health points! " << endl;
+        if(i.name == itemName && i.quantity > 0 && i.isOwned == true){ // checks first
+            if(i.name == "Revive Stone") {
+                c->heal(c->getMaxHP() * 0.5); // revive stone formula
+                removeItems(itemName, 1); // deletes the item bcs have been used
+                cout << "You revived! Restore 50% health points!" << endl;
+            } else if(i.name == "Health Potion" || i.name == "Mega Potion") {
+                c->heal(i.effect);
+                removeItems(itemName, 1);
+                cout << itemName << " used, restores " << i.effect << " health points!" << endl;
+            }
+            return;
         }
-        return;
     }
+    cout << itemName << " not owned!" << endl; // if not valid
 }
-    cout << itemName << " not owned!" << endl; // if item name does not match
+
+void Inventory::setQuantity(string itemName, int qty){
+    for(Item& i : items){
+        if(i.name == itemName){
+            i.quantity = qty;
+            i.isOwned = (qty > 0); // to mark that is owned is true
+        }
+    }
 }
 
 int Inventory::getQuantity(string itemName){
@@ -81,6 +90,28 @@ void Inventory::displayInventory() { // if already loop through getItems() to sh
             cout << i.name << " x" << i.quantity << endl;
         }
     }
+}
+
+// Added function to save/use gold from battle into inventory
+// This is seperate from the usable items
+void Inventory::addCoins(int amount) {
+    coins += amount;
+}
+
+int  Inventory::getCoins() const {
+    return coins;
+}
+
+bool Inventory::spendCoins(int amount) {
+    if (amount > coins) {
+        return false;
+    }
+    coins -= amount;
+    return true;
+}
+
+void Inventory::setCoins(int amount) {
+    coins = amount;
 }
 
 // printItem — one item detail
