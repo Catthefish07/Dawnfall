@@ -1,9 +1,9 @@
 #ifndef ARCHER_H
 #define ARCHER_H
 
-#include "character.h"
+#include "rangeattack.h"
 
-class Archer : public Character {
+class Archer : public RangeAttack {
 public:
     Archer(std::string name, int maxHP, int attack, int defense, int speed);
 
