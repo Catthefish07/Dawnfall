@@ -1,9 +1,10 @@
 #ifndef TANK_H
 #define TANK_H
 
-#include "character.h"
+#include "meleeattack.h"
 
-class Tank : public Character {
+class Tank : public MeleeAttack
+{
 public:
     Tank(std::string name, int maxHP, int attack, int defense, int speed);
 
