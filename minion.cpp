@@ -8,15 +8,26 @@ EnemyAction Minion::chooseAction(const vector<Character*>&) {
 }
 
 Character* Minion::chooseTarget(const vector<Character*>& party) {
-    Character* target = nullptr;
-
-    for (Character* member : party) {
-        if (!member->isAlive()) continue;
-
-        if (!target || member->getHP() < target->getHP()) {
-            target = member;
+    std::vector<Character*> alive;
+    for (Character* c : party) {
+        if (c->isAlive()){
+            alive.push_back(c);
         }
     }
+    if (alive.empty()){
+        return nullptr;
+    }
 
-    return target;
+    if (rand() % 100 < 60) {
+        Character* target = alive[0];
+        for (Character* c : alive) {
+            if (c->getHP() < target->getHP()){
+                target = c;
+            }
+        }
+        return target;
+    }
+    else {
+        return alive[rand() % alive.size()];
+    }
 }
