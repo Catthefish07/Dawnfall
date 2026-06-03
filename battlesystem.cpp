@@ -1,6 +1,5 @@
 #include "battlesystem.h"
 #include <sstream>
-#include <iostream>
 
 using namespace std;
 
@@ -78,7 +77,7 @@ BattleResult BattleSystem::processTurn() {
 
             if (allEnemiesDead()) {
                 result = VICTORY;
-                // distributeRewards();
+                distributeRewards();
                 return result;
             }
         }
@@ -189,7 +188,7 @@ int BattleSystem::findReadySkill(Character* character, SkillType type) {
     vector<Skill>& skills = character->getSkills();
 
     for (size_t i = 0; i < skills.size(); i++) {
-        if (skills[i].type == type && skills[i].isReady()) {
+        if (skills[i].getType() == type && skills[i].isReady()) {
             return (int)i;
         }
     }
@@ -248,32 +247,40 @@ string BattleSystem::characterUseSkill(Character* user, int skillIndex, Enemy* e
 
     Skill& skill = skills[skillIndex];
     if (!skill.isReady()) {
-        return skill.name + " is still on cooldown!";
+        return skill.getName() + " is still on cooldown!";
     }
 
     string log;
 
-    switch (skill.type) {
+    switch (skill.getType()) {
 
     case DAMAGE: {
         if (!enemyTarget) return "No enemy target.";
-        int damage = user->dealDamage() + skill.power;
+        int damage = user->dealDamage() + skill.getPower();
         enemyTarget->takeDamage(damage);
-        log = user->getName() + " used " + skill.name + " on " + enemyTarget->getName() + " for " + to_string(damage) + " damage!";
+        log = user->getName() + " used " + skill.getName() + " on " + enemyTarget->getName() + ". Deals " + to_string(damage) + " damage!";
         break;
     }
 
     case DEFEND: {
-        if (!allyTarget) return "No ally target.";
-        allyTarget->addDefense(skill.power);
-        log = user->getName() + " used " + skill.name + " on " + allyTarget->getName() + ", raising defense by " + to_string(skill.power) + "!";
+        if (!allyTarget){
+            return "No ally target.";
+        }
+        int reduction = skill.getPower() + (user->getLevel() - 1) * 2;
+        if (reduction > 50){
+            reduction = 50;
+        }
+
+        allyTarget->addTempDefense(reduction, 3);
+        log = user->getName() + " used " + skill.getName() + " on " + allyTarget->getName() + ". Damage reduced by " + to_string(reduction) + "% for 3 turns!";
         break;
     }
 
     case HEAL: {
         if (!allyTarget) return "No ally target.";
-        allyTarget->heal(skill.power);
-        log = user->getName() + " used " + skill.name + " on " + allyTarget->getName() + ", healing " + to_string(skill.power) + " HP!";
+        int healAmount = (int)(allyTarget->getMaxHP() * skill.getPower() / 100.0);
+        allyTarget->heal(healAmount);
+        log = user->getName() + " used " + skill.getName() + " on " + allyTarget->getName() + ". " + to_string(healAmount) + " HP restored!";
         break;
     }
     }
@@ -288,18 +295,22 @@ string BattleSystem::characterUseItem(Character* character, int itemIndex) {
     }
 
     vector<Item> items = inventory.getItems();
-
     if (itemIndex < 0 || itemIndex >= (int)items.size()) {
         return "Invalid item.";
     }
 
     Item item = items[itemIndex];
-
     if (!item.isOwned || item.quantity <= 0) {
         return item.name + " is not available.";
     }
 
-    inventory.useItem(item.name, character);
+    int hpBefore = character->getHP();
+    inventory.useItem(item.name, character);            // friend's code, untouched
+    int healed = character->getHP() - hpBefore;
+
+    if (healed > 0) {
+        return character->getName() + " used " + item.name + ". " + to_string(healed) + " HP restored!";
+    }
 
     return character->getName() + " used " + item.name + ".";
 }
@@ -365,23 +376,23 @@ Enemy* BattleSystem::getWeakestEnemy() {
     return weakest;
 }
 
-// // This adds up all the coins dropped by the enemies in this battle
-// int BattleSystem::calculateCoinReward() const {
-//     int total = 0;
+// This adds up all the coins dropped by the enemies in this battle
+int BattleSystem::calculateCoinReward() const {
+    int total = 0;
 
-//     for (Enemy* enemy : enemies) {
-//         total += enemy->getCoinDrop();
-//     }
+    for (Enemy* enemy : enemies) {
+        total += enemy->getCoinDrop();
+    }
 
-//     return total;
-// }
+    return total;
+}
 
-// // This gets called after a victory: gives the coins to the inventory and writes it in the log
-// void BattleSystem::distributeRewards() {
-//     int coins = calculateCoinReward();
-//     inventory.addItems(coins);
-//     battleLog += "Victory! Earned " + to_string(coins) + " coins.\n";
-// }
+// This gets called after a victory: gives the coins to the inventory and writes it in the log
+void BattleSystem::distributeRewards() {
+    int coins = calculateCoinReward();
+    inventory.addCoins(coins);
+    battleLog += "Victory! Earned " + to_string(coins) + " coins.\n";
+}
 
 // This returns the whole text log of everything that happened in the battle
 string BattleSystem::getBattleLog() const {
