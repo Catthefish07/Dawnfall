@@ -2,8 +2,6 @@
 
 Character::Character(std::string name, int maxHP, int attack, int defense, int speed) : name(name), HP(maxHP), maxHP(maxHP), attack(attack), defense(defense), speed(speed), level(1) {}
 
-Character::~Character() {}
-
 void Character::takeDamage(int amount) {
     int actualDamage = amount - defense;
     if (actualDamage < 1) {
@@ -20,10 +18,6 @@ void Character::heal(int amount) {
     if (HP > maxHP) {
         HP = maxHP;
     }
-}
-
-void Character::addDefense(int amount) {
-    defense += amount;
 }
 
 bool Character::isAlive() const {
@@ -55,7 +49,7 @@ int Character::getAttack() const {
 }
 
 int Character::getDefense() const {
-    return defense;
+    return defense + defenseBuff;
 }
 
 int Character::getSpeed() const {
@@ -70,8 +64,20 @@ std::vector<Skill>& Character::getSkills() {
     return skills;
 }
 
+void Character::addTempDefense(int amount, int turns) {
+    defenseBuff = amount;
+    defenseBuffDuration = turns;
+}
+
 void Character::tickSkills() {
     for (Skill& s : skills) {
         s.tick();
+    }
+
+    if (defenseBuffDuration > 0) {
+        defenseBuffDuration--;
+        if (defenseBuffDuration == 0) {
+            defenseBuff = 0;
+        }
     }
 }
