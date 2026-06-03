@@ -5,6 +5,8 @@
 #include <vector>
 #include "skill.h"
 
+enum AttackType { MELEE, RANGE };
+
 class Character {
 protected:
     std::string name;
@@ -15,19 +17,20 @@ protected:
     int attack;
     int defense;
     int speed;
-
+    int defenseBuff = 0;
+    int defenseBuffDuration = 0;
 
 public:
     Character(std::string name, int maxHP, int attack, int defense, int speed);
-    virtual ~Character();
+    virtual ~Character() = default;
 
-    virtual void takeDamage(int amount);
+    void takeDamage(int amount);
     virtual int dealDamage() const = 0;
-    virtual void levelUp();
+    virtual AttackType getAttackType() const = 0;
+    void levelUp();
 
     void heal(int amount);
     bool isAlive() const;
-    void addDefense(int amount);
 
     std::string getName() const;
     int getHP() const;
@@ -38,7 +41,8 @@ public:
     int getLevel() const;
 
     std::vector<Skill>& getSkills();
-    void tickSkills();
+    virtual void tickSkills();
+    void addTempDefense(int amount, int turns);
 
 };
 
