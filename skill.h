@@ -6,12 +6,21 @@
 enum SkillType { DAMAGE, DEFEND, HEAL };
 
 class Skill {
-public:
+private:
     std::string name;
     SkillType type;
     int power;
     int maxCooldown;
     int currentCooldown;
+
+public:
+    std::string getName() const;
+    SkillType getType() const;
+    int getPower() const;
+    int getBasePower() const;
+    int getMaxCooldown() const;
+    int getCurrentCooldown() const;
+
     Skill(std::string name, SkillType type, int power, int maxCooldown);
     bool isReady() const;
     void use();
