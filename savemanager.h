@@ -11,7 +11,7 @@ using namespace std;
 
 struct PlayerRecord
 {
-    int playerID;
+    int charUID;
     char playerUsername[25];
     int avatarIndex;
     int coins;
@@ -25,7 +25,7 @@ struct PlayerRecord
 class SaveManager
 {
 public:
-    int generateID();
+    int generateUID();
 
     void saveGame(int slot, PlayerRecord player, Inventory& iv, Shop& shop, PartyManager& pm); // saves data of the whole game
     PlayerRecord loadGame(int slot, Inventory& iv, Shop& shop, PartyManager& pm); // restores back data when player loads game
