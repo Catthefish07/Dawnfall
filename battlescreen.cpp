@@ -1,21 +1,32 @@
 #include "battlescreen.h"
+#include "enemyspawner.h"
 #include "inventory.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QShortcut>
 #include <QEvent>
+#include <QHash>
+#include <QMouseEvent>
 #include <algorithm>
 
 // CONSTRUCTOR
-BattleScreen::BattleScreen(vector<Character*> partyIn, vector<Enemy*> enemiesIn,
+BattleScreen::BattleScreen(vector<Character*> partyIn,
+                           vector<vector<string>> wavesIn,
                            Inventory* inventoryIn,
                            BattleMode mode, int W, int H, QWidget *parent)
-    : QWidget(parent), party(partyIn), enemies(enemiesIn),
+    : QWidget(parent), party(partyIn),
     inventory(inventoryIn),
     mode(mode), currentEnemyIndex(0), W(W), H(H),
-    isAnimating(false), combinedIndex(0)
+    isAnimating(false), combinedIndex(0),
+    waves(wavesIn), currentWave(0), totalCoinsEarned(0)
 {
-    battleSystem = new BattleSystem(partyIn, enemiesIn, *inventory, mode);
+    // Spawn wave pertama
+    for (const string& name : waves[0]) {
+        Enemy* e = EnemySpawner::createEnemy(name);
+        if (e) enemies.push_back(e);
+    }
+
+    battleSystem = new BattleSystem(party, enemies, *inventory, mode);
     setupUI();
     buildTurnOrder();
     updateTurnOrder();
@@ -24,6 +35,14 @@ BattleScreen::BattleScreen(vector<Character*> partyIn, vector<Enemy*> enemiesIn,
     selectedEnemyIndex = getFirstAliveEnemyIndex();
     if (selectedEnemyIndex != -1) {
         selectEnemyTarget(selectedEnemyIndex);
+
+        // Update portrait ke character pertama yang giliran
+        if (!combinedOrder.empty()) {
+            auto& first = combinedOrder[combinedIndex];
+            if (first.isParty)
+                updatePortraitByName(first.name);
+        }
+
         dialogueText->setText("Choose an action.");
     }
 }
@@ -64,9 +83,9 @@ void BattleScreen::setupUI() {
     chapterLabel->setAlignment(Qt::AlignCenter);
     chapterLabel->setStyleSheet("color:#8888cc;" + fs(11) + "font-family:'Courier New'; letter-spacing:3px;");
 
-    turnLabel = new QLabel("Turn 1", this);
-    turnLabel->setGeometry(x(720), y(8), w(70), y(20));
-    turnLabel->setStyleSheet("color:#4a4a8a;" + fs(10) + "font-family:'Courier New';");
+    waveLabel = new QLabel("⚔ Wave 1/" + QString::number(waves.size()), this);
+    waveLabel->setGeometry(x(10), y(8), w(100), y(20));
+    waveLabel->setStyleSheet("color:#8888cc;" + fs(10) + "font-family:'Courier New';");
 
     // HERO SPRITES
     QString characterColors[3] = {"#1a4a2a","#1a3a6a","#3a2a1a"};
@@ -144,16 +163,9 @@ void BattleScreen::setupUI() {
 
     // PORTRAIT
     dialoguePortrait = new QLabel(this);
-    dialoguePortrait->setGeometry(-25, y(52), x(250), y(380));
+    dialoguePortrait->setGeometry(-130, y(-25), x(360), y(580));
     dialoguePortrait->setStyleSheet("background:none; border:none;");
-    dialoguePortrait->setAlignment(Qt::AlignCenter);
-
-    QPixmap portrait(":/assets/portraits/mc_neutral.PNG");
-    if (!portrait.isNull())
-        dialoguePortrait->setPixmap(portrait.scaled(x(420), y(600),
-                                                    Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    else
-        dialoguePortrait->setText("MC");
+    dialoguePortrait->setAlignment(Qt::AlignVCenter | Qt::AlignHCenter);
 
     // DIALOGUE TEXT
     dialogueText = new QLabel("Select an action...", this);
@@ -181,11 +193,19 @@ void BattleScreen::setupUI() {
         else
             characterPfp[i]->setText(pnames[i].left(1));
 
+        // Name
         QLabel *pname = new QLabel(i < (int)party.size() ?
                                        QString::fromStdString(party[i]->getName()) : pnames[i], this);
-        pname->setGeometry(i * slotW + x(75), y(453), x(160), y(18));
+        pname->setGeometry(i * slotW + x(75), y(453), x(85), y(18));
         pname->setStyleSheet("color:white;" + fs(12) + "font-family:'Courier New'; font-weight:bold;");
 
+        // Skill cooldown label
+        skillCooldownLabels[i] = new QLabel("", this);
+        skillCooldownLabels[i]->setGeometry(i * slotW + x(162), y(453), x(45), y(16));
+        skillCooldownLabels[i]->setStyleSheet("color:#ffaa44;" + fs(9) + "font-family:'Courier New'; letter-spacing:-1px;");
+        skillCooldownLabels[i]->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+        // HP bars
         characterHpBars[i] = new QProgressBar(this);
         characterHpBars[i]->setRange(0, 100);
         characterHpBars[i]->setValue(100);
@@ -195,6 +215,7 @@ void BattleScreen::setupUI() {
             "QProgressBar{background:#0d0d1a; border:2px solid #44cc44; border-radius:3px;}"
             "QProgressBar::chunk{background:#44cc44; border-radius:2px;}");
 
+        // HP bars text
         characterHpText[i] = new QLabel(this);
         characterHpText[i]->setGeometry(i * slotW + x(165), y(475), x(40), y(20));
         characterHpText[i]->setStyleSheet("color:#aaaaaa;" + fs(9) + "font-family:'Courier New'; font-weight:bold;");
@@ -273,6 +294,52 @@ void BattleScreen::setupUI() {
     btnCancelInventory->hide();
 
     updateTurnOrder();
+
+    // CHECKING STATS PANEL
+    statsPanel = new QLabel(this);
+    statsPanel->setGeometry(0, 0, x(50), y(80));
+    statsPanel->setStyleSheet(
+        "background:#0d0d1a;"
+        "border:2px solid #ffdd44;"
+        "border-radius:6px;"
+        "padding:4px;");
+    statsPanel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    statsPanel->setWordWrap(true);
+    statsPanel->hide();
+    statsPanel->raise();
+}
+
+void BattleScreen::updatePortrait(const QString& portraitPath) {
+    QPixmap portrait(portraitPath);
+    if (!portrait.isNull()) {
+        dialoguePortrait->setPixmap(portrait.scaled(
+            dialoguePortrait->width(),
+            dialoguePortrait->height(),
+            Qt::KeepAspectRatio,
+            Qt::SmoothTransformation));
+    }
+}
+
+QString BattleScreen::getPortraitPathByName(const string& name) const {
+    static const QHash<QString, QString> portraitMap = {
+        {"Ethan",   ":/assets/portraits/ethan_neutral.png"},
+        {"MC",      ":/assets/portraits/mc_neutral.PNG"},
+        {"Hubert",  ":/assets/portraits/hubert_neutral.PNG"},
+
+        {"Wolf",    ":/assets/portraits/wolf_neutral.PNG"},
+        {"Snake",   ":/assets/portraits/snake_neutral.PNG"},
+        {"Slime",   ":/assets/portraits/slime_neutral.PNG"},
+        {"Gorilla", ":/assets/portraits/gorilla_neutral.PNG"}
+    };
+
+    return portraitMap.value(
+        QString::fromStdString(name),
+        ":/assets/portraits/mc_neutral.PNG"
+        );
+}
+
+void BattleScreen::updatePortraitByName(const string& name) {
+    updatePortrait(getPortraitPathByName(name));
 }
 
 // ── SETUP CONNECTIONS ──
@@ -344,12 +411,10 @@ void BattleScreen::setupConnections() {
 
             currentEnemyIndex = selectedEnemyIndex;
 
+            updatePortraitByName(party[current.index]->getName());
+
             string log = battleSystem->characterUseSkill(
-                party[current.index],
-                0,
-                enemies[selectedEnemyIndex],
-                nullptr
-                );
+                party[current.index], 0, enemies[selectedEnemyIndex], nullptr);
 
             lockAllInput();
 
@@ -463,11 +528,58 @@ void BattleScreen::advanceTurn() {
     } else {
         QTimer::singleShot(500, this, [this]() {
             unlockAllInput();
-            if (!combinedOrder.empty() && combinedIndex < (int)combinedOrder.size())
-                dialogueText->setText(QString::fromStdString(
-                                          combinedOrder[combinedIndex].name) + "'s turn!");
+            updateSkillCooldowns();
+            if (!combinedOrder.empty() && combinedIndex < (int)combinedOrder.size()) {
+                auto& next = combinedOrder[combinedIndex];
+
+                dialogueText->setText(QString::fromStdString(next.name) + "'s turn!");
+                updatePortraitByName(next.name);
+            }
         });
     }
+}
+
+// ── SKILL COOLDOWN ──
+void BattleScreen::updateSkillCooldowns() {
+    for (int i = 0; i < (int)party.size() && i < 3; i++) {
+        auto& skills = party[i]->getSkills();
+        if (skills.empty() || skills[0].isReady()) {
+            skillCooldownLabels[i]->setText("");
+        } else {
+            skillCooldownLabels[i]->setText("⏳ " + QString::number(skills[0].currentCooldown));
+        }
+    }
+}
+
+// ── CHECKING STATS ──
+void BattleScreen::showStatsPanel(int hp, int maxHp, int atk, int def, int spd, QString name, QPoint pos) {
+    QString text = QString("<b style='color:#ffdd44;'>%1</b><br>"
+                           "<span style='color:#44cc44;'>❤ %2/%3</span><br>"
+                           "<span style='color:#ff8888;'>⚔ ATK: %4</span><br>"
+                           "<span style='color:#8888ff;'>🛡 DEF: %5</span><br>"
+                           "<span style='color:#ffaa44;'>💨 SPD: %6</span>")
+                       .arg(name)
+                       .arg(hp).arg(maxHp)
+                       .arg(atk).arg(def).arg(spd);
+
+    statsPanel->setText(text);
+    statsPanel->setTextFormat(Qt::RichText);
+
+    // Posisi panel — pastiin ga keluar layar
+    int panelW = (int)(90 * W/800.0f);
+    int panelH = (int)(65 * H/600.0f);
+    int px = pos.x() - panelW - 5;  // ← kiri sprite
+    int py = pos.y();                // ← sejajar atas sprite
+    if (px < 0) px = pos.x() + (int)(70 * W/800.0f) + 5;  // fallback ke kanan kalau mepet kiri
+    if (py + panelH > H) py = H - panelH;
+
+    statsPanel->setGeometry(px, py, (int)(50 * W/800.0f), (int)(80 * H/600.0f));
+    statsPanel->show();
+    statsPanel->raise();
+}
+
+void BattleScreen::hideStatsPanel() {
+    statsPanel->hide();
 }
 
 // ── INVENTORY ──
@@ -776,24 +888,41 @@ void BattleScreen::useAbilityOnAlly(int targetIndex) {
 
     updatePartyUI();
 
-    // Restore pfp kalau revive/heal bikin target hidup lagi
+    // Kalau target di-revive, tambah balik ke combinedOrder
     if (party[targetIndex]->isAlive()) {
+        // Cek apakah udah ada di combinedOrder
+        bool alreadyInOrder = false;
+        for (auto& entry : combinedOrder) {
+            if (entry.isParty && entry.index == targetIndex) {
+                alreadyInOrder = true;
+                break;
+            }
+        }
+
+        if (!alreadyInOrder) {
+            combinedOrder.push_back({
+                party[targetIndex]->getName(),
+                party[targetIndex]->getSpeed(),
+                true,
+                targetIndex
+            });
+            // Re-sort
+            sort(combinedOrder.begin(), combinedOrder.end(), [](auto& a, auto& b){
+                return a.speed > b.speed;
+            });
+        }
+
+        // Restore pfp
         QString normalPfpPaths[3] = {
             ":/assets/profilepic/ethan_pfp.png",
             ":/assets/profilepic/mc_pfp.png",
             ":/assets/profilepic/hubert_pfp.png"
         };
-
         QPixmap pfp(normalPfpPaths[targetIndex]);
-
-        if (!pfp.isNull()) {
+        if (!pfp.isNull())
             characterPfp[targetIndex]->setPixmap(pfp.scaled(
-                (int)(50 * W / 800.0f),
-                (int)(50 * H / 600.0f),
-                Qt::KeepAspectRatio,
-                Qt::FastTransformation
-                ));
-        }
+                (int)(50 * W/800.0f), (int)(50 * H/600.0f),
+                Qt::KeepAspectRatio, Qt::FastTransformation));
     }
 
     updateTurnOrder();
@@ -836,6 +965,8 @@ void BattleScreen::addBattleLog(const QString& entry) {
 
 // ── LOAD NEXT ENEMY ──
 void BattleScreen::loadNextEnemy() {
+    totalCoinsEarned += enemies[currentEnemyIndex]->getCoinDrop();
+
     enemySprites3[currentEnemyIndex]->hide();
     enemyNameLabels[currentEnemyIndex]->hide();
     enemyHpBars3[currentEnemyIndex]->hide();
@@ -849,10 +980,19 @@ void BattleScreen::loadNextEnemy() {
     }
 
     selectedEnemyIndex = getFirstAliveEnemyIndex();
-    if (selectedEnemyIndex == -1) { showVictoryScreen(); return; }
+    if (selectedEnemyIndex == -1) {
+        // Semua enemy wave ini mati — cek apakah ada wave berikutnya
+        QTimer::singleShot(1000, this, [this]() {
+            loadNextWave();
+        });
+        return;
+    }
 
     currentEnemyIndex = selectedEnemyIndex;
-    if (combinedOrder.empty()) { showVictoryScreen(); return; }
+    if (combinedOrder.empty()) {
+        QTimer::singleShot(1000, this, [this]() { loadNextWave(); });
+        return;
+    }
 
     enemySprite    = enemySprites3[currentEnemyIndex];
     enemyHpBar     = enemyHpBars3[currentEnemyIndex];
@@ -868,9 +1008,94 @@ void BattleScreen::loadNextEnemy() {
     advanceTurn();
 }
 
+// ── LOAD NEXT WAVE ──
+void BattleScreen::loadNextWave() {
+    currentWave++;
+
+    if (currentWave >= (int)waves.size()) {
+        showVictoryScreen();
+        return;
+    }
+
+    // Clear enemies lama
+    for (auto e : enemies) delete e;
+    enemies.clear();
+
+    // Spawn enemies wave baru
+    for (const string& name : waves[currentWave]) {
+        Enemy* e = EnemySpawner::createEnemy(name);
+        if (e) enemies.push_back(e);
+    }
+
+    // Reset UI enemies
+    for (int i = 0; i < 3; i++) {
+        if (i < (int)enemies.size()) {
+            enemyNameLabels[i]->setText(QString::fromStdString(enemies[i]->getName()));
+            enemyHpBars3[i]->setValue(100);
+            enemySprites3[i]->show();
+            enemyNameLabels[i]->show();
+            enemyHpBars3[i]->show();
+
+            // ← tambah ini — reset style dan opacity
+            enemySprites3[i]->setGraphicsEffect(nullptr);  // hapus fade effect
+            enemySprites3[i]->setStyleSheet(
+                "background-color:#2a1a1a; color:#ff8888;"
+                "border-radius:" + QString::number((int)(65 * W/800.0f)/2) + "px;"
+                                                                 "border:2px solid #cc4444;"
+                                                                 "font-family:'Courier New'; font-size:" +
+                QString::number((int)(14 * W/800.0f)) + "px;");
+            enemySprites3[i]->setText("E");
+        } else {
+            enemySprites3[i]->hide();            enemyNameLabels[i]->hide();
+            enemyHpBars3[i]->hide();
+        }
+    }
+
+    // Reset index dan pointer
+    currentEnemyIndex = 0;
+    enemySprite    = enemySprites3[0];
+    enemyHpBar     = enemyHpBars3[0];
+    enemyNameLabel = enemyNameLabels[0];
+
+    // Update wave label
+    waveLabel->setText("👾 Wave " + QString::number(currentWave + 1) +
+                       "/" + QString::number(waves.size()));
+
+    // Rebuild turn order dengan enemies baru
+    buildTurnOrder();
+    updateTurnOrder();
+    updateEnemyUI();
+    updateEnemyTargetHighlight();
+
+    selectedEnemyIndex = getFirstAliveEnemyIndex();
+    if (selectedEnemyIndex != -1) selectEnemyTarget(selectedEnemyIndex);
+
+    dialogueText->setText("Wave " + QString::number(currentWave + 1) + " begins!");
+
+    // Cek siapa yang giliran pertama
+    auto& first = combinedOrder[combinedIndex];
+    if (!first.isParty) {
+        QTimer::singleShot(1000, this, [this]() {
+            playEnemyTurn();
+        });
+    } else {
+        unlockAllInput();
+        if (!combinedOrder.empty()) {
+            auto& first = combinedOrder[combinedIndex];
+            if (first.isParty)
+                updatePortraitByName(first.name);
+            else
+                updatePortraitByName(first.name); // enemy portrait
+        }
+    }
+}
+
 // ── ANIMATIONS ──
 void BattleScreen::playAttackAnimation(int characterIndex) {
     if (characterIndex >= (int)party.size()) { unlockAllInput(); return; }
+
+    updatePortraitByName(party[characterIndex]->getName());
+
     QLabel* sprite = characterSprites[characterIndex];
     QPoint origin  = sprite->pos();
 
@@ -888,6 +1113,8 @@ void BattleScreen::playAttackAnimation(int characterIndex) {
         back->start();
 
         connect(back, &QPropertyAnimation::finished, [=]() {
+            party[characterIndex]->tickSkills();
+            updateSkillCooldowns();
             int dmg = party[characterIndex]->dealDamage();
             if (currentEnemyIndex < (int)enemies.size()) {
                 enemies[currentEnemyIndex]->takeDamage(dmg);
@@ -922,10 +1149,41 @@ void BattleScreen::playEnemyTurn() {
     Enemy* enemy = enemies[current.index];
     if (enemy->isDead()) { unlockAllInput(); return; }
 
-    battleSystem->enemyTurn(enemy);
+    updatePortraitByName(current.name);
 
-    for (auto c : party)
-        if (c->isAlive()) c->tickSkills();
+    int hpBefore = enemy->getHP();
+    battleSystem->enemyTurn(enemy);
+    int hpAfter = enemy->getHP();
+    int healAmount = hpAfter - hpBefore;
+
+    updateEnemyUI();
+
+    // Floating heal kalau enemy heal diri sendiri
+    if (healAmount > 0) {
+        QLabel *floatingHeal = new QLabel("💚 +" + QString::number(healAmount), this);
+        floatingHeal->setGeometry(enemySprite->x(), enemySprite->y() - 20, 100, 20);
+        floatingHeal->setStyleSheet("color:#44cc44; font-size:20px; font-family:'Courier New'; font-weight:bold;");
+        floatingHeal->show();
+
+        QPropertyAnimation *floatUp = new QPropertyAnimation(floatingHeal, "pos");
+        floatUp->setDuration(800);
+        floatUp->setStartValue(floatingHeal->pos());
+        floatUp->setEndValue(floatingHeal->pos() + QPoint(0, -40));
+        floatUp->start();
+
+        QGraphicsOpacityEffect *healEffect = new QGraphicsOpacityEffect(floatingHeal);
+        floatingHeal->setGraphicsEffect(healEffect);
+        QPropertyAnimation *fade = new QPropertyAnimation(healEffect, "opacity");
+        fade->setDuration(800);
+        fade->setStartValue(1.0);
+        fade->setEndValue(0.0);
+        fade->start();
+
+        connect(fade, &QPropertyAnimation::finished, [=]() {
+            floatingHeal->deleteLater();
+        });
+    }
+    updateSkillCooldowns();
 
     string fullLog = battleSystem->getBattleLog();
     size_t lastNewline = fullLog.rfind('\n', fullLog.size() - 2);
@@ -979,6 +1237,32 @@ void BattleScreen::playShakeAnimation(QLabel* sprite) {
 }
 
 void BattleScreen::playDefeatAnimation() {
+
+    int coinDrop = enemies[currentEnemyIndex]->getCoinDrop();
+    QLabel *floatingCoins = new QLabel("🪙 +" + QString::number(coinDrop), this);
+    floatingCoins->setGeometry(enemySprite->x(), enemySprite->y() - 20, 120, 20);
+    floatingCoins->setStyleSheet("color:#ffdd44; font-size:20px; font-family:'Courier New'; font-weight:bold;");
+    floatingCoins->show();
+
+    // Float ke atas lalu fade
+    QPropertyAnimation *floatUp = new QPropertyAnimation(floatingCoins, "pos");
+    floatUp->setDuration(800);
+    floatUp->setStartValue(floatingCoins->pos());
+    floatUp->setEndValue(floatingCoins->pos() + QPoint(0, -40));
+    floatUp->start();
+
+    QGraphicsOpacityEffect *effect2 = new QGraphicsOpacityEffect(floatingCoins);
+    floatingCoins->setGraphicsEffect(effect2);
+    QPropertyAnimation *fadeCoins = new QPropertyAnimation(effect2, "opacity");
+    fadeCoins->setDuration(800);
+    fadeCoins->setStartValue(1.0);
+    fadeCoins->setEndValue(0.0);
+    fadeCoins->start();
+
+    connect(fadeCoins, &QPropertyAnimation::finished, [=]() {
+        floatingCoins->deleteLater();
+    });
+
     QGraphicsOpacityEffect *effect = new QGraphicsOpacityEffect(enemySprite);
     enemySprite->setGraphicsEffect(effect);
     QPropertyAnimation *fadeOut = new QPropertyAnimation(effect, "opacity");
@@ -1026,45 +1310,77 @@ bool BattleScreen::eventFilter(QObject *obj, QEvent *event) {
             if (obj == characterSprites[i]) {
                 if (event->type() == QEvent::Enter) {
                     enlargeAllySprite(i);
-
-                    // Keep cancel button above enlarged character
-                    if (btnCancelInventory && btnCancelInventory->isVisible()) {
+                    if (btnCancelInventory && btnCancelInventory->isVisible())
                         btnCancelInventory->raise();
-                    }
-
                     return false;
                 }
-
                 if (event->type() == QEvent::Leave) {
                     resetAllySpriteSize(i);
                     updateAllyHighlight();
-
-                    // Keep cancel button above character after reset too
-                    if (btnCancelInventory && btnCancelInventory->isVisible()) {
+                    if (btnCancelInventory && btnCancelInventory->isVisible())
                         btnCancelInventory->raise();
-                    }
-
                     return false;
                 }
             }
         }
     }
 
-    if (!isAnimating && event->type() == QEvent::MouseButtonPress) {
-        // Enemy targeting
-        for (int i = 0; i < (int)enemies.size() && i < 3; i++) {
-            if (obj == enemySprites3[i] && selectionMode == SelectionMode::NONE) {
-                selectEnemyTarget(i);
-                return true;
-            }
+    if (!isAnimating && event->type() == QEvent::MouseButtonRelease) {
+        QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+        if (mouseEvent->button() == Qt::RightButton) {
+            hideStatsPanel();
+            return true;
         }
+    }
 
-        // Ally targeting
-        if (selectionMode != SelectionMode::NONE) {
-            for (int i = 0; i < (int)party.size() && i < 3; i++) {
-                if (obj == characterSprites[i]) {
-                    useAbilityOnAlly(i);
+    if (!isAnimating && event->type() == QEvent::MouseButtonPress) {
+        QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
+
+        if (mouseEvent->button() == Qt::RightButton) {
+            // Enemy stats
+            for (int i = 0; i < (int)enemies.size() && i < 3; i++) {
+                if (obj == enemySprites3[i] && !enemies[i]->isDead()) {
+                    showStatsPanel(
+                        enemies[i]->getHP(), enemies[i]->getMaxHP(),
+                        enemies[i]->getAttack(), enemies[i]->getDefense(),
+                        enemies[i]->getSpeed(),
+                        QString::fromStdString(enemies[i]->getName()),
+                        enemySprites3[i]->mapToParent(QPoint(0, 0))
+                        );
                     return true;
+                }
+            }
+            // Party stats
+            for (int i = 0; i < 3; i++) {
+                if (obj == characterSprites[i]) {
+                    showStatsPanel(
+                        party[i]->getHP(), party[i]->getMaxHP(),
+                        party[i]->getAttack(), party[i]->getDefense(),
+                        party[i]->getSpeed(),
+                        QString::fromStdString(party[i]->getName()),
+                        characterSprites[i]->mapToParent(QPoint(0, 0))
+                        );
+                    return true;
+                }
+            }
+            hideStatsPanel();
+            return false;
+
+        } else {
+            // Left click — enemy targeting
+            for (int i = 0; i < (int)enemies.size() && i < 3; i++) {
+                if (obj == enemySprites3[i] && selectionMode == SelectionMode::NONE) {
+                    selectEnemyTarget(i);
+                    return true;
+                }
+            }
+            // Ally targeting
+            if (selectionMode != SelectionMode::NONE) {
+                for (int i = 0; i < (int)party.size() && i < 3; i++) {
+                    if (obj == characterSprites[i]) {
+                        useAbilityOnAlly(i);
+                        return true;
+                    }
                 }
             }
         }
@@ -1202,10 +1518,16 @@ void BattleScreen::showVictoryScreen() {
     title->show();
 
     QLabel *sub = new QLabel("All enemies defeated!", this);
-    sub->setGeometry(W/2-200, H/2, 400, 40);
+    sub->setGeometry(W/2-200, H/2-20, 400, 40);
     sub->setAlignment(Qt::AlignCenter);
     sub->setStyleSheet("color:white; font-size:18px; font-family:'Courier New';");
     sub->show();
+
+    QLabel *coinsLabel = new QLabel("🪙 +" + QString::number(totalCoinsEarned), this);
+    coinsLabel->setGeometry(W/2-200, H/2 + 20, 400, 30);
+    coinsLabel->setAlignment(Qt::AlignCenter);
+    coinsLabel->setStyleSheet("color:#ffdd44; font-size:20px; font-family:'Courier New'; font-weight:bold;");
+    coinsLabel->show();
 
     QPushButton *btnContinue = new QPushButton("CONTINUE", this);
     btnContinue->setGeometry(W/2-120, H/2+80, 240, 50);
