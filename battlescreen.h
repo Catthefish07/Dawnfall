@@ -19,7 +19,8 @@ using namespace std;
 class BattleScreen : public QWidget {
     Q_OBJECT
 public:
-    explicit BattleScreen(vector<Character*> partyIn, vector<Enemy*> enemiesIn,
+    explicit BattleScreen(vector<Character*> partyIn,
+                          vector<vector<string>> wavesIn,
                           Inventory* inventoryIn,
                           BattleMode mode, int W, int H, QWidget *parent = nullptr);
 signals:
@@ -85,6 +86,11 @@ private:
     void updatePartyUI();
     void updateEnemyUI();
     void updateTurnOrder();
+
+    void updatePortrait(const QString& portraitPath);
+    QString getPortraitPathByName(const string& name) const;
+    void updatePortraitByName(const string& name);
+
     void addBattleLog(const QString& entry);
     void loadNextEnemy();
     void showVictoryScreen();
@@ -119,10 +125,10 @@ private:
     bool            isInventoryOpen = false;
     int             selectedItemIndex = -1;
 
-    void            openInventoryPanel();
-    void            closeInventoryPanel();
-    void            showItemChoices();
-    void            showPartyTargetChoices(int itemIndex);
+    void openInventoryPanel();
+    void closeInventoryPanel();
+    void showItemChoices();
+    void showPartyTargetChoices(int itemIndex);
 
     // ── Ally Selection ──
     enum class SelectionMode { NONE, SKILL_ALLY, ITEM_ALLY };
@@ -132,6 +138,25 @@ private:
     void            enlargeAllySprite(int index);
     void            resetAllySpriteSize(int index);
     void            useAbilityOnAlly(int targetPartyIndex);
+
+    // ── Skill Cooldown ──
+    QLabel* skillCooldownLabels[3];
+    void    updateSkillCooldowns();
+
+    // ── Coins ──
+    int totalCoinsEarned = 0;
+
+    // ── Wave System ──
+    vector<vector<string>> waves;
+    int currentWave = 0;
+    QLabel* waveLabel = nullptr;
+    void loadNextWave();
+
+    // ── Checking Stats ──
+    QLabel* statsPanel = nullptr;
+    void showStatsPanel(int hp, int maxHp, int atk, int def, int spd, QString name, QPoint pos);
+    void hideStatsPanel();
+
 };
 
 #endif // BATTLESCREEN_H
