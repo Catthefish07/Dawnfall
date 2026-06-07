@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
 
     lobby.setWindowTitle("My Game — Lobby");
     lobby.resize(1080, 680);
-    lobby.show();
+    lobby.showMaximized();
 
     int result = app.exec();
 

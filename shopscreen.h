@@ -1,6 +1,5 @@
 #ifndef SHOPSCREEN_H
 #define SHOPSCREEN_H
-
 #include <QDialog>
 #include <QWidget>
 #include <QLabel>
@@ -14,9 +13,8 @@
 #include <QString>
 #include "shop.h"
 #include "inventory.h"
-
+#include "partymanager.h"
 class PixmapButton;
-
 //for items
 class ShopItemCard : public QWidget
 {
@@ -24,10 +22,8 @@ class ShopItemCard : public QWidget
 public:
     explicit ShopItemCard(const Item &item, QWidget *parent = nullptr);
     void refreshCoins(int coins);
-
 signals:
     void buyRequested(const QString &itemName, int qty);
-
 private:
     void buildUi();
     Item m_item;
@@ -38,7 +34,6 @@ private:
     QPushButton *m_buyBtn = nullptr;
     int m_coins = 0;
 };
-
 //for character
 class ShopCharCard : public QWidget
 {
@@ -48,10 +43,10 @@ public:
                           int currentChapter,
                           QWidget *parent = nullptr);
     void setOwned(bool owned);
-
+    void refreshUpgrade(int coins, int currentLevel);
 signals:
     void buyRequested(const QString &charName);
-
+    void upgradeRequested(const QString &charName);
 private:
     void buildUi();
     CharacterShop m_char;
@@ -60,9 +55,10 @@ private:
     QLabel *m_nameLbl = nullptr;
     QLabel *m_priceLbl = nullptr;
     QLabel *m_statusLbl = nullptr;
+    QLabel *m_levelLbl = nullptr;
     QPushButton *m_buyBtn = nullptr;
+    QPushButton *m_upgradeBtn = nullptr;
 };
-
 //main
 class ShopScreen : public QDialog
 {
@@ -71,18 +67,17 @@ public:
     explicit ShopScreen(Shop &shop,
                         Inventory &inventory,
                         int &coins,
+                        PartyManager &pm,
                         int currentChapter = 0,
                         QWidget *parent = nullptr);
-
 signals:
     void shopClosed();
-
 private slots:
     void onItemBuy(const QString &itemName, int qty);
     void onCharBuy(const QString &charName);
+    void onCharUpgrade(const QString &charName);
     void switchToItems();
     void switchToChars();
-
 private:
     void buildUi();
     void buildTopBar();
@@ -90,20 +85,17 @@ private:
     void buildCharPage();
     void refreshCoinsDisplay();
     void applyStyle();
-
     Shop &m_shop;
     Inventory &m_inventory;
     int &m_coins;
     int m_currentChapter;
-\
-    QLabel  *m_coinsLbl = nullptr;
+    PartyManager &m_pm;
+    QLabel *m_coinsLbl = nullptr;
     QStackedWidget *m_stack = nullptr;
     PixmapButton *m_itemTabBtn = nullptr;   // itemShop.png
     PixmapButton *m_charTabBtn = nullptr;   // characterShop.png
-
     //to refresh coins display
     QVector<ShopItemCard*> m_itemCards;
     QVector<ShopCharCard*> m_charCards;
 };
-
 #endif

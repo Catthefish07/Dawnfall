@@ -1,5 +1,6 @@
 #include "shopscreen.h"
 #include "lobbyscreen.h"
+#include "partymanager.h"
 #include <QMessageBox>
 #include <QScrollArea>
 #include <QStyle>
@@ -91,7 +92,7 @@ ShopCharCard::ShopCharCard(const CharacterShop &ch,
 
 void ShopCharCard::buildUi()
 {
-    setFixedSize(210, 245);
+    setFixedSize(210, 270);
 
     QVBoxLayout *vl = new QVBoxLayout(this);
     vl->setContentsMargins(10, 10, 10, 10);
@@ -132,10 +133,24 @@ void ShopCharCard::buildUi()
     m_statusLbl->setAlignment(Qt::AlignCenter);
     m_statusLbl->setObjectName("cardStatus");
 
+    m_levelLbl = new QLabel(this);
+    m_levelLbl->setAlignment(Qt::AlignCenter);
+    m_levelLbl->setObjectName("cardLevel");
+    m_levelLbl->hide(); // only shown when owned
+
     m_buyBtn = new QPushButton(this);
     m_buyBtn->setObjectName("buyBtn");
     m_buyBtn->setFixedHeight(30);
     m_buyBtn->setCursor(Qt::PointingHandCursor);
+
+    m_upgradeBtn = new QPushButton("⬆ UPGRADE", this);
+    m_upgradeBtn->setObjectName("upgradeBtn");
+    m_upgradeBtn->setFixedHeight(28);
+    m_upgradeBtn->setCursor(Qt::PointingHandCursor);
+    m_upgradeBtn->hide(); // only shown when owned
+    connect(m_upgradeBtn, &QPushButton::clicked, this, [this](){
+        emit upgradeRequested(QString::fromStdString(m_char.name));
+    });
 
     bool available = (m_currentChapter >= m_char.worldRequired);
     bool owned     = m_char.isOwned || m_char.isFree;
@@ -145,6 +160,8 @@ void ShopCharCard::buildUi()
         m_buyBtn->setText("OWNED");
         m_buyBtn->setEnabled(false);
         m_buyBtn->setObjectName("ownedBtn");
+        m_upgradeBtn->show();
+        m_levelLbl->show();
     } else if (!available) {
         m_statusLbl->setText(QString("🔒 Ch.%1 required").arg(m_char.worldRequired));
         m_buyBtn->setText("LOCKED");
@@ -163,7 +180,9 @@ void ShopCharCard::buildUi()
     vl->addWidget(m_nameLbl);
     vl->addWidget(m_priceLbl);
     vl->addWidget(m_statusLbl);
+    vl->addWidget(m_levelLbl);
     vl->addWidget(m_buyBtn);
+    vl->addWidget(m_upgradeBtn);
 }
 
 void ShopCharCard::setOwned(bool owned)
@@ -174,9 +193,19 @@ void ShopCharCard::setOwned(bool owned)
         m_buyBtn->setEnabled(false);
         m_buyBtn->setObjectName("ownedBtn");
         m_statusLbl->setText("✓ Owned");
+        m_upgradeBtn->show();
+        m_levelLbl->show();
     }
     m_buyBtn->style()->unpolish(m_buyBtn);
     m_buyBtn->style()->polish(m_buyBtn);
+}
+
+void ShopCharCard::refreshUpgrade(int coins, int currentLevel)
+{
+    int upgradeCost = currentLevel * 200;
+    m_levelLbl->setText(QString("Lv.%1 | Next: 🪙%2").arg(currentLevel).arg(upgradeCost));
+    m_upgradeBtn->setEnabled(coins >= upgradeCost);
+    m_upgradeBtn->setToolTip(coins >= upgradeCost ? "" : "Not enough coins!");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -186,6 +215,7 @@ void ShopCharCard::setOwned(bool owned)
 ShopScreen::ShopScreen(Shop      &shop,
                        Inventory &inventory,
                        int       &coins,
+                       PartyManager &pm,
                        int        currentChapter,
                        QWidget   *parent)
     : QDialog(parent)
@@ -193,6 +223,7 @@ ShopScreen::ShopScreen(Shop      &shop,
     , m_inventory(inventory)
     , m_coins(coins)
     , m_currentChapter(currentChapter)
+    , m_pm(pm)
 {
     setWindowTitle("Shop");
     setMinimumSize(1200, 720);
@@ -217,6 +248,7 @@ void ShopScreen::buildUi()
     // Topbar AFTER stack is ready, inserts itself at top of layout
     buildTopBar();
 }
+
 void ShopScreen::buildItemPage()
 {
     // Page background: shopBuy_item asset
@@ -234,9 +266,11 @@ void ShopScreen::buildItemPage()
     int bgW = 1200, bgH = int(1280.0 * 736.0 / 1254.0);
     pageBg->setFixedSize(bgW, bgH);
     if (!itemBg.isNull())
-        pageBg->setPixmap(itemBg.scaled(bgW, bgH,
-                                        Qt::IgnoreAspectRatio,
-                                        Qt::SmoothTransformation));
+        pageBg->setPixmap(
+            itemBg.scaled(bgW,
+                          bgW * itemBg.height() / itemBg.width(),
+                          Qt::KeepAspectRatio,
+                          Qt::SmoothTransformation));
     else
         pageBg->setStyleSheet("background:rgba(255,255,255,0.05);border-radius:12px;");
 
@@ -244,8 +278,8 @@ void ShopScreen::buildItemPage()
     // The 3 slots start at roughly x=155,y=80 spaced ~270px apart, height ~270px
     QVector<QString> itemNames = {"Health Potion", "Mega Potion", "Revive Stone"};
     QVector<int>     itemPrices = {1500, 3000, 5000};
-    int slotX[3] = {250, 520, 790};
-    int slotY    = 175;
+    int slotX[3] = {205, 475, 745};
+    int slotY    = 150;
 
     for (int i = 0; i < 3; ++i) {
         // Find item in stock
@@ -291,18 +325,23 @@ void ShopScreen::buildCharPage()
     if (!m_charCards.isEmpty())
         pageBg->stackUnder(m_charCards[0]);
     if (!charBg.isNull())
-        pageBg->setPixmap(charBg.scaled(bgW, bgH,
-                                        Qt::IgnoreAspectRatio,
-                                        Qt::SmoothTransformation));
+        pageBg->setPixmap(
+            charBg.scaled(bgW,
+                          bgW * charBg.height() / charBg.width(),
+                          Qt::KeepAspectRatio,
+                          Qt::SmoothTransformation));
     else
         pageBg->setStyleSheet("background:rgba(255,255,255,0.05);border-radius:12px;");
 
     // 6 characters for sale (skip Joy, Ethan, Hubert — they're free/auto)
     // From shop.cpp: Lynn, Ben, Cedric, Kae, Zey, Anak Agung
     // Layout: 3 per row, 2 rows
-    int slotX[3] = {220, 445, 670};
+    int slotX[3] = {160, 500, 670};
     int slotY[2] = {100, 340};
     int cardIdx   = 0;
+
+    // get unlocked characters to read their levels
+    vector<Character*> unlockedChars = m_pm.getUnlockedCharacters();
 
     for (const CharacterShop &ch : m_shop.getCharacterStock()) {
         if (ch.isFree) continue;   // skip free characters
@@ -313,8 +352,21 @@ void ShopScreen::buildCharPage()
 
         ShopCharCard *card = new ShopCharCard(ch, m_currentChapter, pageBg);
         card->move(slotX[col], slotY[row]);
+
+        // if owned, show level and upgrade cost
+        if (ch.isOwned) {
+            for (Character* c : unlockedChars) {
+                if (c->getName() == ch.name) {
+                    card->refreshUpgrade(m_coins, c->getLevel());
+                    break;
+                }
+            }
+        }
+
         connect(card, &ShopCharCard::buyRequested,
                 this, &ShopScreen::onCharBuy);
+        connect(card, &ShopCharCard::upgradeRequested,
+                this, &ShopScreen::onCharUpgrade);
         m_charCards.append(card);
         cardIdx++;
     }
@@ -389,13 +441,25 @@ void ShopScreen::refreshCoinsDisplay()
     m_coinsLbl->setText(QString("🪙  %1").arg(m_coins));
     for (ShopItemCard *c : m_itemCards)
         c->refreshCoins(m_coins);
+
+    // refresh upgrade buttons with updated coins and levels
+    vector<Character*> unlockedChars = m_pm.getUnlockedCharacters();
+    for (ShopCharCard *card : m_charCards) {
+        for (Character* c : unlockedChars) {
+            if (card->findChild<QLabel*>("cardName") &&
+                card->findChild<QLabel*>("cardName")->text() ==
+                    QString::fromStdString(c->getName())) {
+                card->refreshUpgrade(m_coins, c->getLevel());
+                break;
+            }
+        }
+    }
 }
 
 void ShopScreen::onItemBuy(const QString &itemName, int qty)
 {
-    bool ok = m_shop.buyItem(itemName.toStdString(), qty, m_inventory);
+    bool ok = m_shop.buyItem(itemName.toStdString(), qty, m_inventory, m_coins);
     if (ok) {
-        m_coins = m_inventory.getCoins();
         refreshCoinsDisplay();
         QMessageBox::information(this, "Purchased!",
                                  QString("Bought %1x %2!").arg(qty).arg(itemName));
@@ -407,21 +471,14 @@ void ShopScreen::onItemBuy(const QString &itemName, int qty)
 
 void ShopScreen::onCharBuy(const QString &charName)
 {
-    bool ok = m_shop.buyCharacter(charName.toStdString(),
-                                  m_inventory,
-                                  m_currentChapter);
+    bool ok = m_shop.buyCharacter(charName.toStdString(), m_coins, m_currentChapter);
     if (ok) {
-        m_coins = m_inventory.getCoins();
         refreshCoinsDisplay();
-
-        // Update the card to show owned
         for (ShopCharCard *c : m_charCards) {
-            // find matching card by checking name label
             if (c->findChild<QLabel*>("cardName") &&
                 c->findChild<QLabel*>("cardName")->text() == charName)
                 c->setOwned(true);
         }
-
         QMessageBox::information(this, "Unlocked!",
                                  QString("%1 has joined your roster!").arg(charName));
     } else {
@@ -431,6 +488,18 @@ void ShopScreen::onCharBuy(const QString &charName)
         else if (charName == "Anak Agung" && m_currentChapter < 4)
             reason = "Finish Peak Mountain first to unlock Anak Agung!";
         QMessageBox::warning(this, "Cannot Buy", reason);
+    }
+}
+
+void ShopScreen::onCharUpgrade(const QString &charName)
+{
+    bool ok = m_shop.upgradeCharacter(charName.toStdString(), m_coins, m_pm);
+    if (ok) {
+        refreshCoinsDisplay();
+        QMessageBox::information(this, "Upgraded!",
+                                 QString("%1 leveled up!").arg(charName));
+    } else {
+        QMessageBox::warning(this, "Cannot Upgrade", "Not enough coins!");
     }
 }
 
@@ -461,11 +530,9 @@ void ShopScreen::applyStyle()
         #shopStack { background: transparent; }
         #itemPage, #charPage { background: transparent; }
 
-        /* Cards */
         ShopItemCard, ShopCharCard {
-            background: rgba(255,248,220,0.55);
-            border: 1px solid rgba(180,140,60,0.4);
-            border-radius: 10px;
+            background: transparent;
+            border: none;
         }
         #cardName {
             color: #3a2000;
@@ -490,6 +557,11 @@ void ShopScreen::applyStyle()
             font-size: 11px;
             background: transparent;
         }
+        #cardLevel {
+            color: #b8860b;
+            font-size: 11px;
+            background: transparent;
+        }
         #buyBtn {
             background: rgba(34,139,34,0.75);
             border: 1px solid rgba(34,197,94,0.7);
@@ -501,6 +573,17 @@ void ShopScreen::applyStyle()
         }
         #buyBtn:hover { background: rgba(34,197,94,0.85); }
         #buyBtn:disabled { background: rgba(100,100,100,0.3); color: #888; border-color: #555; }
+        #upgradeBtn {
+            background: rgba(184,134,11,0.75);
+            border: 1px solid rgba(255,215,0,0.7);
+            border-radius: 7px;
+            color: #fff8dc;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        #upgradeBtn:hover { background: rgba(255,215,0,0.85); color: #3a2000; }
+        #upgradeBtn:disabled { background: rgba(100,100,100,0.3); color: #888; border-color: #555; }
         #ownedBtn {
             background: rgba(70,130,180,0.4);
             border: 1px solid rgba(100,160,210,0.6);
