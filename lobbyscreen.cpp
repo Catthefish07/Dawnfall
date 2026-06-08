@@ -183,14 +183,14 @@ QuestPopup::QuestPopup(const LocationInfo &info, QWidget *parent)
 
 void QuestPopup::buildUi(const LocationInfo &info)
 {
-    setFixedSize(360, 480);
+    setFixedSize(430, 560);
 
-    // ── 1. Scroll background
+    //1. Scroll background
     m_bgLabel = new QLabel(this);
-    m_bgLabel->setGeometry(0, 0, 360, 480);
+    m_bgLabel->setGeometry(0, 0, 430, 560);
     QPixmap bgPx = loadAsset("assets/lobbyscreen/popUpQuest");
     if (!bgPx.isNull())
-        m_bgLabel->setPixmap(bgPx.scaled(380, 580,
+        m_bgLabel->setPixmap(bgPx.scaled(450, 680,
                                          Qt::KeepAspectRatio,
                                          Qt::SmoothTransformation));
     else
@@ -198,54 +198,48 @@ void QuestPopup::buildUi(const LocationInfo &info)
             "background:qlineargradient(x1:0,y1:0,x2:0,y2:1,"
             "stop:0 #2a1a0e,stop:1 #1a0e06);"
             "border-radius:16px;border:2px solid rgba(180,120,60,0.6);");
+
+    m_bgLabel->setAlignment(Qt::AlignCenter);
     m_bgLabel->lower();
 
-    // ── 2. Close button
+    //2. Close button
     auto *closeBtn = new QPushButton("✕", this);
-    closeBtn->setGeometry(300, 50, 26, 26);
+    closeBtn->setGeometry(372, 58, 28, 28);
     closeBtn->setCursor(Qt::PointingHandCursor);
     closeBtn->setStyleSheet(
-        "QPushButton{background:rgba(0,0,0,0.50);color:white;border-radius:13px;"
-        "font-weight:bold;font-size:12px;border:none;}"
+        "QPushButton{background:rgba(0,0,0,0.50);color:white;border-radius:14px;"
+        "font-weight:bold;font-size:13px;border:none;}"
         "QPushButton:hover{background:rgba(200,50,50,0.9);}");
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::reject);
     closeBtn->raise();
 
-    // ── 3. Location name — below baked-in QUEST graphic
+    //3. Location name — below baked-in QUEST graphic
     auto *locNameLbl = new QLabel(info.name, this);
-    locNameLbl->setGeometry(60, 140, 260, 26);
+    locNameLbl->setGeometry(40, 165, 350, 28);
     locNameLbl->setAlignment(Qt::AlignCenter);
     locNameLbl->setStyleSheet(
-        "color:#5a2d00;font-size:15px;font-weight:bold;" //font for location on popup
+        "color:#ffcc33;font-size:16px;font-weight:bold;"
         "font-family:'Bahnschrift','Trebuchet MS',sans-serif;"
         "letter-spacing:1px;background:transparent;");
     locNameLbl->raise();
 
-    // ── 4. bg_chapter banner
-    m_chapterBg = new QLabel(this);
-    m_chapterBg->setGeometry(60, 185, 200, 36);
-    QPixmap chBgPx = loadAsset("assets/lobbyscreen/bg_chapter");
-    if (!chBgPx.isNull())
-        m_chapterBg->setPixmap(chBgPx.scaled(200, 32,
-                                             Qt::KeepAspectRatio,
-                                             Qt::SmoothTransformation));
-    else
-        m_chapterBg->setStyleSheet(
-            "background:rgba(0,0,0,0.40);border-radius:6px;"
-            "border:1px solid rgba(255,215,0,0.3);");
-    m_chapterBg->raise();
+    //4. bg_chapter banner  ── DELETED: this was the grey sliver you circled.
+    //        (the bg_chapter pixmap's left edge poked past the scroll onto the island)
+    //        m_chapterBg is no longer created; leaving the member unused is harmless.
 
-    // ── 5. "Chapter X" text ON TOP of bg_chapter
-    m_chapterLbl = new QLabel(this);   // keep for text display
-    m_chapterLbl->setGeometry(88, 170, 220, 36);
+    //5. "Chapter X"
+    m_chapterLbl = new QLabel(this);
+    m_chapterLbl->setGeometry(130, 203, 170, 34);
     m_chapterLbl->setAlignment(Qt::AlignCenter);
     m_chapterLbl->setStyleSheet(
-        "color:#ffd700;font-size:13px;font-weight:bold;background:transparent;");
+        "color:#5a2d00;font-size:15px;font-weight:bold;"
+        "background:rgba(90,45,0,0.12);"
+        "border-radius:10px;padding:3px 0;");
     m_chapterLbl->raise();
 
-    //clickable overlay on the chapter banner — acts as START
+    //clickable overlay where the chapter line sits — acts as START
     auto *chapterBtn = new QPushButton(this);
-    chapterBtn->setGeometry(60, 185, 220, 36);
+    chapterBtn->setGeometry(115, 205, 200, 36);
     chapterBtn->setStyleSheet(
         "QPushButton{background:transparent;border:none;cursor:pointer;}"
         "QPushButton:hover{background:rgba(255,215,0,0.15);border-radius:6px;}");
@@ -257,34 +251,34 @@ void QuestPopup::buildUi(const LocationInfo &info)
     });
     chapterBtn->raise();
 
-    // ── 6. Quest text
+    //6. Quest text
     m_questText = new QLabel(this);
-    m_questText->setGeometry(120, 200, 190, 180); //text for chapter (description)
-    m_questText->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    m_questText->setGeometry(105, 255, 220, 240);
+    m_questText->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
     m_questText->setWordWrap(true);
     m_questText->setStyleSheet(
-        "color:#2a1a0a;font-size:12px;font-weight:500;"
-        "background:transparent;padding:6px;");
+        "color:#2a1a0a;font-size:13px;font-weight:500;"
+        "background:transparent;padding:6px 14px;");
     m_questText->raise();
 
-    // ── 7. Page indicator
+    //7. Page indicator
     m_pageLbl = new QLabel(this);
-    m_pageLbl->setGeometry(140, 415, 80, 18);
+    m_pageLbl->setGeometry(175, 505, 80, 20);
     m_pageLbl->setAlignment(Qt::AlignCenter);
     m_pageLbl->setStyleSheet(
         "color:rgba(60,30,10,0.65);font-size:11px;background:transparent;");
     m_pageLbl->raise();
 
-    // ── 8. Left nav
+    //8. Left nav
     m_leftBtn = new PixmapButton("assets/lobbyscreen/kiri_popupquest", this);
-    m_leftBtn->setGeometry(4, 245, 36, 36);
+    m_leftBtn->setGeometry(45, 255, 40, 40);
     m_leftBtn->setToolTip("Previous");
     connect(m_leftBtn, &QPushButton::clicked, this, &QuestPopup::prevPage);
     m_leftBtn->raise();
 
-    // ── 9. Right nav
+    //9. Right nav
     m_rightBtn = new PixmapButton("assets/lobbyscreen/kanan_popupquest", this);
-    m_rightBtn->setGeometry(320, 245, 36, 36);
+    m_rightBtn->setGeometry(345, 255, 40, 40);
     m_rightBtn->setToolTip("Next");
     connect(m_rightBtn, &QPushButton::clicked, this, &QuestPopup::nextPage);
     m_rightBtn->raise();
@@ -300,7 +294,7 @@ void QuestPopup::nextPage()
 
 void QuestPopup::updatePage()
 {
-    m_chapterLbl->setText(QString("✦  Chapter %1  ✦").arg(m_page + 1));
+    m_chapterLbl->setText(QString(" CHAPTER %1 ").arg(m_page + 1));
 
     m_questText->setText(
         (m_page < m_info.chapters.size())
@@ -354,16 +348,19 @@ void LobbyScreen::buildLocations()
             "Where Your Journey Begin",
             0,
             {
-                "Into the woods...\n\n"
-                ""
-                "deep in the Maple Forest.\n"
-                "Meet adventures.",
+                "After a long time,\n"
+                "you comeback to Dawn Town and went to the forest.\n"
+                "Deep in the Maple Forest,\n"
+                "what wait for you?",
 
                 "• Finish Story Chapter 01\n"
                 "• Win the competition\n"
-                "• Continue your journey to the next chapter."
+                "Encounter wolf or whatwhatwhat descriptionnn",
+
+                "Chapter 3...\n"
+                "Chapter description blablabla...."
             },
-            "assets/lobbyscreen/mapleForest", 0.215f, 0.535f
+            "assets/lobbyscreen/mapleForest", 0.215f, 0.680f
         },
         {
             "dungeon", "The Dungeon",
@@ -379,7 +376,7 @@ void LobbyScreen::buildLocations()
                 "• Reach Level B3\n"
                 "• Defeat the Dungeon King"
             },
-            "assets/lobbyscreen/dungeon", 0.434f, 0.48f
+            "assets/lobbyscreen/dungeon", 0.434f, 0.58f
         },
         {
             "sun_castle", "Sun Castle",
@@ -395,7 +392,7 @@ void LobbyScreen::buildLocations()
                 "• Find the Sun Relic\n"
                 "• Defeat the King."
             },
-            "assets/lobbyscreen/sunCastle", 0.67f, 0.43f
+            "assets/lobbyscreen/sunCastle", 0.675f, 0.53f
         },
         {
             "peak_mountain", "Peak Mountain",
@@ -411,7 +408,7 @@ void LobbyScreen::buildLocations()
                 "• Find the ??? Met ???\n"
                 "• Defeat the Dragon."
             },
-            "assets/lobbyscreen/peakMountain", 0.865f, 0.513f
+            "assets/lobbyscreen/peakMountain", 0.87f, 0.660f
         }
     };
 }
@@ -555,6 +552,7 @@ void LobbyScreen::buildMapArea()
             "background:qlineargradient(x1:0,y1:0,x2:1,y2:1,"
             "stop:0 #0d1b2a,stop:1 #1a2744);");
     m_bgLabel->lower();
+      m_bgLabel->hide();
     m_bgLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
 
     for (int i = 0; i < m_locations.size(); ++i) {
@@ -652,9 +650,10 @@ void LobbyScreen::buildBottomBar()
     connect(m_playBtn, &QPushButton::clicked, this, [this](){
         for (const LocationInfo &loc : m_locations)
             if (loc.requiredChapter == m_record.currentChapter) {
-                emit battleRequested(loc.id); return;
+                onLocationClicked(loc);          //opens the same QuestPopup as clicking the island
+                return;
             }
-        emit battleRequested(m_locations[0].id);
+        onLocationClicked(m_locations[0]);       //fallback: first location
     });
 }
 
