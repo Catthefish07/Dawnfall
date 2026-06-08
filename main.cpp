@@ -1,5 +1,6 @@
 #include "mainmenuscreen.h"
 #include "battlescreen.h"
+#include "lobbyscreen.h"
 #include "enemy.h"
 #include "character.h"
 #include "archer.h"
@@ -7,33 +8,73 @@
 #include "warrior.h"
 #include "inventory.h"
 #include "dialoguescreen.h"
+#include "savemanager.h"
+#include "partymanager.h"
+#include "shop.h"
 
 #include <QApplication>
 #include <QStackedWidget>
+#include <QWidget>
 #include <QScreen>
-#include <QDebug>
 #include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
 #include <QTimer>
+#include <QDir>
+#include <QDateTime>
 #include <vector>
 #include <functional>
+#include <cstring>
 
 using namespace std;
 
+// ─────────────────────────────────────────────────────────────
 // Forward declarations
-void startChapter1(QStackedWidget *screens, QString playerName, int W, int H);
-void startChapter2(QStackedWidget *screens, QString playerName, int W, int H);
-void startChapter3(QStackedWidget *screens, QString playerName, int W, int H);
+// ─────────────────────────────────────────────────────────────
 
-void startChapter2Campsite(QStackedWidget *screens, QString playerName, int W, int H);
-void startChapter2ForestBattle(QStackedWidget *screens, QString playerName, int W, int H);
+void startChapter1(QStackedWidget *screens, QString playerName, int W, int H,
+                   PlayerRecord *playerRecord, Inventory *sharedInventory,
+                   SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                   LobbyScreen *lobby);
+
+void startChapter2(QStackedWidget *screens, QString playerName, int W, int H,
+                   PlayerRecord *playerRecord, Inventory *sharedInventory,
+                   SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                   LobbyScreen *lobby);
+
+void startChapter2Campsite(QStackedWidget *screens, QString playerName, int W, int H,
+                           PlayerRecord *playerRecord, Inventory *sharedInventory,
+                           SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                           LobbyScreen *lobby);
+
+void startChapter2ForestBattle(QStackedWidget *screens, QString playerName, int W, int H,
+                               PlayerRecord *playerRecord, Inventory *sharedInventory,
+                               SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                               LobbyScreen *lobby);
+
+void startChapter3(QStackedWidget *screens, QString playerName, int W, int H,
+                   PlayerRecord *playerRecord, Inventory *sharedInventory,
+                   SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                   LobbyScreen *lobby);
+
 void showChapterCompletedTransition(QStackedWidget *screens, int W, int H,
                                     QString chapterTitle, QString subtitleText,
                                     std::function<void()> onFinished);
 
+LobbyScreen* createLobby(QStackedWidget *screens, QString playerName,
+                         int W, int H,
+                         PlayerRecord *playerRecord, Inventory *inventory,
+                         SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                         vector<Character*> allCharacters);
+
+void showSaveSlotOverlay(QStackedWidget *screens, int W, int H,
+                         PlayerRecord *playerRecord, Inventory *inventory,
+                         SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                         bool isSaving,
+                         vector<Character*> allCharacters,
+                         std::function<void()> onLoadSuccess = nullptr);
 // ─────────────────────────────────────────────────────────────
 // Small helpers
 // ─────────────────────────────────────────────────────────────
@@ -41,8 +82,7 @@ void showChapterCompletedTransition(QStackedWidget *screens, int W, int H,
 void cleanupScreen(QStackedWidget *screens, QWidget *widget)
 {
     if (!screens || !widget) return;
-    if (widget == screens->widget(0)) return; // never delete main menu
-
+    if (widget == screens->widget(0)) return;
     screens->removeWidget(widget);
     widget->deleteLater();
 }
@@ -59,21 +99,12 @@ DialogueScreen* showDialogue(QStackedWidget *screens,
     return dialogue;
 }
 
-Inventory* createStoryInventory()
-{
-    Inventory *inventory = new Inventory();
-    inventory->setQuantity("Health Potion", 3);
-    inventory->setQuantity("Mega Potion", 1);
-    inventory->setQuantity("Revive Stone", 1);
-    return inventory;
-}
-
 Warrior* createMC(QString playerName)
 {
     Warrior* mc = new Warrior(playerName.toStdString(), 120, 18, 12, 15);
     mc->setProfilePaths(
-        ":/assets/profilepic/mc_pfp.png",
-        ":/assets/profilepic/mc_pfp_dead.png",
+        ":/assets/profilepic/mc_pfp.PNG",
+        ":/assets/profilepic/mc_pfp_dead.PNG",
         ":/assets/portraits/mc_neutral.PNG"
         );
     return mc;
@@ -83,8 +114,8 @@ Archer* createEthan()
 {
     Archer* ethan = new Archer("Ethan", 100, 16, 8, 20);
     ethan->setProfilePaths(
-        ":/assets/profilepic/ethan_pfp.png",
-        ":/assets/profilepic/ethan_pfp_dead.png",
+        ":/assets/profilepic/ethan_pfp.PNG",
+        ":/assets/profilepic/ethan_pfp_dead.PNG",
         ":/assets/portraits/ethan_neutral.png"
         );
     return ethan;
@@ -94,16 +125,24 @@ Tank* createHubert()
 {
     Tank* hubert = new Tank("Hubert", 160, 14, 18, 8);
     hubert->setProfilePaths(
-        ":/assets/profilepic/hubert_pfp.png",
-        ":/assets/profilepic/hubert_pfp_dead.png",
+        ":/assets/profilepic/hubert_pfp.PNG",
+        ":/assets/profilepic/hubert_pfp_dead.PNG",
         ":/assets/portraits/hubert_neutral.PNG"
         );
     return hubert;
 }
 
+void saveProgress(PlayerRecord *playerRecord, Inventory *inventory,
+                  SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                  int chapter)
+{
+    playerRecord->coins = inventory->getCoins();
+    playerRecord->currentChapter = chapter;
+    saveManager->saveGame(0, *playerRecord, *inventory, *shop, *partyManager);
+}
+
 // ─────────────────────────────────────────────────────────────
 // Dialogue data functions
-// Keeping these outside lambdas reduces memory usage while compiling.
 // ─────────────────────────────────────────────────────────────
 
 vector<DialogueLine> getChapter1IntroLines(QString playerName)
@@ -122,7 +161,7 @@ vector<DialogueLine> getChapter1IntroLines(QString playerName)
          "Maybe I should look around before heading into town."},
         {p, ":/assets/portraits/mc_neutral.PNG",
          "??? What's that sound?"},
-        {"Slime", ":/assets/portraits/slime_neutral.PNG",
+        {"Slime", ":/assets/portraits/slime_neutral.png",
          "*blerp*"},
         {p, ":/assets/portraits/mc_neutral.PNG",
          "Woah, a slime? Looks like I have to fight."}
@@ -373,11 +412,11 @@ vector<DialogueLine> getChapter3PreBattleLines(QString playerName)
          "Hubert, wake up! This is serious."},
         {"Ethan", ":/assets/portraits/ethan_neutral.png",
          "Look guys! There's a giant gorilla right in front of us!"},
-        {"Gorilla", ":/assets/portraits/gorilla_neutral.PNG",
+        {"Gorilla", ":/assets/portraits/gorilla_neutral.png",
          "*huffs and puffs*"},
         {p, ":/assets/portraits/mc_neutral.PNG",
          "Get ready for the fight guys!"},
-        {"Gorilla", ":/assets/portraits/gorilla_neutral.PNG",
+        {"Gorilla", ":/assets/portraits/gorilla_neutral.png",
          "ROARRRRRRRRRRRRRRRRRRR!"}
     };
 }
@@ -444,46 +483,31 @@ void showChapterCompletedTransition(QStackedWidget *screens, int W, int H,
                                     QString chapterTitle, QString subtitleText,
                                     std::function<void()> onFinished)
 {
-    QLabel *overlay = new QLabel(screens);
+    QWidget *overlay = new QWidget(screens);
     overlay->setGeometry(0, 0, W, H);
-    overlay->setAttribute(Qt::WA_TranslucentBackground);
-    overlay->setStyleSheet("background: rgba(0, 0, 0, 150);");
+    overlay->setStyleSheet("background-color: rgba(0, 0, 0, 150);");
     overlay->show();
     overlay->raise();
 
     QLabel *chapterText = new QLabel(chapterTitle, overlay);
-    chapterText->setGeometry(0, H / 2 - 80, W, 40);
+    chapterText->setGeometry(0, H/2 - 80, W, 40);
     chapterText->setAlignment(Qt::AlignCenter);
     chapterText->setStyleSheet(
-        "background:none;"
-        "color:#8888aa;"
-        "font-size:24px;"
-        "font-family:'Courier New';"
-        "font-weight:bold;"
-        "letter-spacing:5px;"
-        );
+        "background:none; color:#8888aa; font-size:24px;"
+        "font-family:'Courier New'; font-weight:bold; letter-spacing:5px;");
 
     QLabel *completedText = new QLabel("COMPLETED", overlay);
-    completedText->setGeometry(0, H / 2 - 25, W, 60);
+    completedText->setGeometry(0, H/2 - 25, W, 60);
     completedText->setAlignment(Qt::AlignCenter);
     completedText->setStyleSheet(
-        "background:none;"
-        "color:#ffdd44;"
-        "font-size:48px;"
-        "font-family:'Courier New';"
-        "font-weight:bold;"
-        "letter-spacing:6px;"
-        );
+        "background:none; color:#ffdd44; font-size:48px;"
+        "font-family:'Courier New'; font-weight:bold; letter-spacing:6px;");
 
     QLabel *subtitle = new QLabel(subtitleText, overlay);
-    subtitle->setGeometry(0, H / 2 + 45, W, 30);
+    subtitle->setGeometry(0, H/2 + 45, W, 30);
     subtitle->setAlignment(Qt::AlignCenter);
     subtitle->setStyleSheet(
-        "background:none;"
-        "color:white;"
-        "font-size:18px;"
-        "font-family:'Courier New';"
-        );
+        "background:none; color:white; font-size:18px; font-family:'Courier New';");
 
     chapterText->show();
     completedText->show();
@@ -499,20 +523,15 @@ void showChapterCompletedTransition(QStackedWidget *screens, int W, int H,
     fadeIn->setEndValue(1.0);
     fadeIn->start(QAbstractAnimation::DeleteWhenStopped);
 
-    // ← parent QTimer ke screens bukan overlay
     QTimer::singleShot(2200, screens, [=]() {
-        if (!overlay) return;  // safety check
-
         QPropertyAnimation *fadeOut = new QPropertyAnimation(effect, "opacity", overlay);
         fadeOut->setDuration(700);
         fadeOut->setStartValue(1.0);
         fadeOut->setEndValue(0.0);
-
         QObject::connect(fadeOut, &QPropertyAnimation::finished, [=]() {
             overlay->deleteLater();
             if (onFinished) onFinished();
         });
-
         fadeOut->start(QAbstractAnimation::DeleteWhenStopped);
     });
 }
@@ -521,33 +540,25 @@ void showChapterCompletedTransition(QStackedWidget *screens, int W, int H,
 // Chapters
 // ─────────────────────────────────────────────────────────────
 
-void startChapter1(QStackedWidget *screens, QString playerName, int W, int H)
+void startChapter1(QStackedWidget *screens, QString playerName, int W, int H,
+                   PlayerRecord *playerRecord, Inventory *sharedInventory,
+                   SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                   LobbyScreen *lobby)
 {
     DialogueScreen *introDialogue = showDialogue(
-        screens,
-        getChapter1IntroLines(playerName),
-        W,
-        H,
-        true
-        );
+        screens, getChapter1IntroLines(playerName),
+        W, H, true, ":/assets/background/forest_battle.png");
 
     QObject::connect(introDialogue, &DialogueScreen::dialogueFinished, [=]() {
         vector<Character*> party;
         party.push_back(createMC(playerName));
 
-        vector<vector<string>> waves = {
-            {"Slime", "Slime", "Slime"}
-        };
+        vector<vector<string>> waves = {{"Slime", "Slime", "Slime"}};
 
         BattleScreen *battle = new BattleScreen(
-            party,
-            waves,
-            createStoryInventory(),
-            STORY_BATTLE,
-            W,
-            H,
-            ":/assets/background/forest_battle.png"
-            );
+            party, waves, sharedInventory,
+            STORY_BATTLE, W, H,
+            ":/assets/background/forest_battle.png");
 
         screens->addWidget(battle);
         screens->setCurrentWidget(battle);
@@ -555,54 +566,46 @@ void startChapter1(QStackedWidget *screens, QString playerName, int W, int H)
 
         QObject::connect(battle, &BattleScreen::battleFinished, [=](bool victory) {
             if (!victory) {
-                screens->setCurrentIndex(0);
                 cleanupScreen(screens, battle);
+                screens->setCurrentWidget(lobby);
                 return;
             }
 
-            DialogueScreen *afterBattleDialogue = showDialogue(
-                screens,
-                getChapter1AfterBattleLines(playerName),
-                W,
-                H,
-                false
-                );
+            saveProgress(playerRecord, sharedInventory, saveManager, shop, partyManager, 0);
+            if (lobby) lobby->refreshStats();
+
+            DialogueScreen *afterBattle = showDialogue(
+                screens, getChapter1AfterBattleLines(playerName),
+                W, H, false, ":/assets/background/forest_battle.png");
             cleanupScreen(screens, battle);
 
-            QObject::connect(afterBattleDialogue, &DialogueScreen::dialogueFinished, [=]() {
-                showChapterCompletedTransition(
-                    screens,
-                    W,
-                    H,
-                    "CHAPTER 01",
-                    "A New Encounter",
-                    [=]() {
-                        cleanupScreen(screens, afterBattleDialogue);
-                        startChapter2(screens, playerName, W, H);
-                    }
-                    );
+            QObject::connect(afterBattle, &DialogueScreen::dialogueFinished, [=]() {
+                showChapterCompletedTransition(screens, W, H,
+                                               "CHAPTER 01", "A New Encounter",
+                                               [=]() {
+                                                   playerRecord->currentChapter = 1;
+                                                   saveProgress(playerRecord, sharedInventory, saveManager, shop, partyManager, 1);
+                                                   cleanupScreen(screens, afterBattle);
+                                                   if (lobby) {
+                                                       lobby->refreshStats();
+                                                       screens->setCurrentWidget(lobby);  // ← balik ke lobby
+                                                   }
+                                               });
             });
         });
     });
 }
 
-void startChapter2(QStackedWidget *screens, QString playerName, int W, int H)
+void startChapter2(QStackedWidget *screens, QString playerName, int W, int H,
+                   PlayerRecord *playerRecord, Inventory *sharedInventory,
+                   SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                   LobbyScreen *lobby)
 {
     DialogueScreen *townDialogue = showDialogue(
-        screens,
-        getChapter2TownLines(playerName),
-        W,
-        H,
-        true,
-        ":/assets/background/cityhall.png"
-        );
-
-    bool *townHandled = new bool(false);
+        screens, getChapter2TownLines(playerName),
+        W, H, true, ":/assets/background/cityhall.png");
 
     QObject::connect(townDialogue, &DialogueScreen::dialogueFinished, [=]() {
-        if (*townHandled) return;
-        *townHandled = true;
-
         vector<Character*> party;
         party.push_back(createMC(playerName));
         party.push_back(createEthan());
@@ -613,165 +616,107 @@ void startChapter2(QStackedWidget *screens, QString playerName, int W, int H)
         };
 
         BattleScreen *slimeBattle = new BattleScreen(
-            party,
-            slimeWaves,
-            createStoryInventory(),
-            STORY_BATTLE,
-            W,
-            H,
-            ":/assets/background/forest_battle.png"
-            );
+            party, slimeWaves, sharedInventory,
+            STORY_BATTLE, W, H,
+            ":/assets/background/forest_battle.png");
 
         screens->addWidget(slimeBattle);
         screens->setCurrentWidget(slimeBattle);
-
-        QTimer::singleShot(0, screens, [=]() {
-            cleanupScreen(screens, townDialogue);
-            delete townHandled;
-        });
-
-        bool *battleHandled = new bool(false);
+        cleanupScreen(screens, townDialogue);
 
         QObject::connect(slimeBattle, &BattleScreen::battleFinished, [=](bool victory) {
-            if (*battleHandled) return;
-            *battleHandled = true;
-
             if (!victory) {
-                screens->setCurrentIndex(0);
-
-                QTimer::singleShot(0, screens, [=]() {
-                    cleanupScreen(screens, slimeBattle);
-                    delete battleHandled;
-                });
-
+                cleanupScreen(screens, slimeBattle);
+                screens->setCurrentWidget(lobby);
                 return;
             }
 
-            // Lanjut ke campsite dulu
-            startChapter2Campsite(screens, playerName, W, H);
-
-            // Baru cleanup battle screen lama
-            QTimer::singleShot(0, screens, [=]() {
-                cleanupScreen(screens, slimeBattle);
-                delete battleHandled;
-            });
+            saveProgress(playerRecord, sharedInventory, saveManager, shop, partyManager, 1);
+            if (lobby) lobby->refreshStats();
+            cleanupScreen(screens, slimeBattle);
+            startChapter2Campsite(screens, playerName, W, H,
+                                  playerRecord, sharedInventory,
+                                  saveManager, shop, partyManager, lobby);
         });
     });
 }
 
-void startChapter2Campsite(QStackedWidget *screens, QString playerName, int W, int H)
+void startChapter2Campsite(QStackedWidget *screens, QString playerName, int W, int H,
+                           PlayerRecord *playerRecord, Inventory *sharedInventory,
+                           SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                           LobbyScreen *lobby)
 {
     DialogueScreen *campsiteDialogue = showDialogue(
-        screens,
-        getChapter2CampsiteLines(playerName),
-        W,
-        H,
-        true,
-        ":/assets/background/campsite.png"
-        );
-
-    bool *campsiteHandled = new bool(false);
+        screens, getChapter2CampsiteLines(playerName),
+        W, H, true, ":/assets/background/campsite.png");
 
     QObject::connect(campsiteDialogue, &DialogueScreen::dialogueFinished, [=]() {
-        if (*campsiteHandled) return;
-        *campsiteHandled = true;
-
-        // Lanjut battle forest dulu
-        startChapter2ForestBattle(screens, playerName, W, H);
-
-        // Baru cleanup dialogue lama
-        QTimer::singleShot(0, screens, [=]() {
-            cleanupScreen(screens, campsiteDialogue);
-            delete campsiteHandled;
-        });
+        cleanupScreen(screens, campsiteDialogue);
+        startChapter2ForestBattle(screens, playerName, W, H,
+                                  playerRecord, sharedInventory,
+                                  saveManager, shop, partyManager, lobby);
     });
 }
 
-void startChapter2ForestBattle(QStackedWidget *screens, QString playerName, int W, int H)
+void startChapter2ForestBattle(QStackedWidget *screens, QString playerName, int W, int H,
+                               PlayerRecord *playerRecord, Inventory *sharedInventory,
+                               SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                               LobbyScreen *lobby)
 {
     vector<Character*> fullParty;
     fullParty.push_back(createMC(playerName));
     fullParty.push_back(createEthan());
     fullParty.push_back(createHubert());
 
-    vector<vector<string>> forestWaves = {
-        {"Snake", "Wolf", "Snake"}
-    };
+    vector<vector<string>> forestWaves = {{"Snake", "Wolf", "Snake"}};
 
     BattleScreen *forestBattle = new BattleScreen(
-        fullParty,
-        forestWaves,
-        createStoryInventory(),
-        STORY_BATTLE,
-        W,
-        H,
-        ":/assets/background/forest_night.png"
-        );
+        fullParty, forestWaves, sharedInventory,
+        STORY_BATTLE, W, H,
+        ":/assets/background/campsite.png");
 
     screens->addWidget(forestBattle);
     screens->setCurrentWidget(forestBattle);
 
-    bool *forestBattleHandled = new bool(false);
-
     QObject::connect(forestBattle, &BattleScreen::battleFinished, [=](bool victory) {
-        if (*forestBattleHandled) return;
-        *forestBattleHandled = true;
-
         if (!victory) {
-            screens->setCurrentIndex(0);
-
-            QTimer::singleShot(0, screens, [=]() {
-                cleanupScreen(screens, forestBattle);
-                delete forestBattleHandled;
-            });
-
+            cleanupScreen(screens, forestBattle);
+            screens->setCurrentWidget(lobby);
             return;
         }
 
-        DialogueScreen *afterForestBattleDialogue = showDialogue(
-            screens,
-            getChapter2AfterForestBattleLines(playerName),
-            W,
-            H,
-            false,
-            ":/assets/background/campsite.png"
-            );
+        saveProgress(playerRecord, sharedInventory, saveManager, shop, partyManager, 1);
+        if (lobby) lobby->refreshStats();
 
-        QTimer::singleShot(0, screens, [=]() {
-            cleanupScreen(screens, forestBattle);
-            delete forestBattleHandled;
-        });
+        DialogueScreen *afterForest = showDialogue(
+            screens, getChapter2AfterForestBattleLines(playerName),
+            W, H, false, ":/assets/background/campsite.png");
+        cleanupScreen(screens, forestBattle);
 
-        bool *afterDialogueHandled = new bool(false);
-
-        QObject::connect(afterForestBattleDialogue, &DialogueScreen::dialogueFinished, [=]() {
-            if (*afterDialogueHandled) return;
-            *afterDialogueHandled = true;
-
-            showChapterCompletedTransition(
-                screens,
-                W,
-                H,
-                "CHAPTER 02",
-                "The Dream Team",
-                [=]() {
-                    cleanupScreen(screens, afterForestBattleDialogue);
-                    delete afterDialogueHandled;
-                    startChapter3(screens, playerName, W, H);
-                }
-                );
+        QObject::connect(afterForest, &DialogueScreen::dialogueFinished, [=]() {
+            showChapterCompletedTransition(screens, W, H,
+                                           "CHAPTER 02", "The Dream Team",
+                                           [=]() {
+                                               playerRecord->currentChapter = 2;
+                                               saveProgress(playerRecord, sharedInventory, saveManager, shop, partyManager, 2);
+                                               if (lobby) lobby->refreshStats();
+                                               cleanupScreen(screens, afterForest);
+                                               startChapter3(screens, playerName, W, H,
+                                                             playerRecord, sharedInventory,
+                                                             saveManager, shop, partyManager, lobby);
+                                           });
         });
     });
 }
 
-void startChapter3(QStackedWidget *screens, QString playerName, int W, int H)
+void startChapter3(QStackedWidget *screens, QString playerName, int W, int H,
+                   PlayerRecord *playerRecord, Inventory *sharedInventory,
+                   SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                   LobbyScreen *lobby)
 {
     DialogueScreen *preBattle = showDialogue(
-        screens,
-        getChapter3PreBattleLines(playerName),
-        W, H, true,
-        ":/assets/background/forest_night.png"
-        );
+        screens, getChapter3PreBattleLines(playerName),
+        W, H, true, ":/assets/background/forest_night.png");
 
     QObject::connect(preBattle, &DialogueScreen::dialogueFinished, [=]() {
         cleanupScreen(screens, preBattle);
@@ -781,59 +726,98 @@ void startChapter3(QStackedWidget *screens, QString playerName, int W, int H)
         party.push_back(createEthan());
         party.push_back(createHubert());
 
-        vector<vector<string>> waves = {
-            {"Snake", "Gorilla", "Wolf"}
-        };
+        vector<vector<string>> waves = {{"Gorilla"}};
 
         BattleScreen *gorillaBattle = new BattleScreen(
-            party, waves, createStoryInventory(),
+            party, waves, sharedInventory,
             STORY_BATTLE, W, H,
-            ":/assets/background/forest_night.png"
-            );
+            ":/assets/background/forest_night.png");
+
         screens->addWidget(gorillaBattle);
         screens->setCurrentWidget(gorillaBattle);
 
         QObject::connect(gorillaBattle, &BattleScreen::battleFinished, [=](bool victory) {
             if (!victory) {
                 cleanupScreen(screens, gorillaBattle);
-                screens->setCurrentIndex(0);
+                screens->setCurrentWidget(lobby);
                 return;
             }
 
-            // Post battle — masih di forest
+            saveProgress(playerRecord, sharedInventory, saveManager, shop, partyManager, 2);
+            if (lobby) lobby->refreshStats();
+
             DialogueScreen *postBattle = showDialogue(
-                screens,
-                getChapter3PostBattleLines(playerName),
-                W, H, false,
-                ":/assets/background/forest_night.png"
-                );
+                screens, getChapter3PostBattleLines(playerName),
+                W, H, false, ":/assets/background/forest_night.png");
             cleanupScreen(screens, gorillaBattle);
 
             QObject::connect(postBattle, &DialogueScreen::dialogueFinished, [=]() {
                 cleanupScreen(screens, postBattle);
 
-                // Epilog — di PAPOI Town (background berbeda)
                 DialogueScreen *epilog = showDialogue(
-                    screens,
-                    getChapter3Epilog(playerName),
-                    W, H, false,
-                    ":/assets/background/papoitown.png"  // ← background town
-                    );
+                    screens, getChapter3Epilog(playerName),
+                    W, H, false, ":/assets/background/papoitown.png");
 
                 QObject::connect(epilog, &DialogueScreen::dialogueFinished, [=]() {
-                    showChapterCompletedTransition(
-                        screens, W, H,
-                        "CHAPTER 03",
-                        "The Dream Team",
-                        [=]() {
-                            cleanupScreen(screens, epilog);
-                            screens->setCurrentIndex(0);
-                        }
-                        );
+                    showChapterCompletedTransition(screens, W, H,
+                                                   "CHAPTER 03", "The Dream Team",
+                                                   [=]() {
+                                                       playerRecord->currentChapter = 3;
+                                                       saveProgress(playerRecord, sharedInventory, saveManager, shop, partyManager, 3);
+                                                       if (lobby) lobby->refreshStats();
+                                                       cleanupScreen(screens, epilog);
+                                                       screens->setCurrentWidget(lobby);
+                                                   });
                 });
             });
         });
     });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helper: create lobby and connect battleRequested
+// ─────────────────────────────────────────────────────────────
+
+LobbyScreen* createLobby(QStackedWidget *screens, QString playerName,
+                         int W, int H,
+                         PlayerRecord *playerRecord, Inventory *inventory,
+                         SaveManager *saveManager, Shop *shop, PartyManager *partyManager,
+                         vector<Character*> allCharacters)
+{
+    LobbyScreen *lobby = new LobbyScreen(
+        *playerRecord, allCharacters, *shop, *inventory,
+        playerRecord->coins, *saveManager, *partyManager, 0);
+
+    screens->addWidget(lobby);
+    screens->setCurrentWidget(lobby);
+
+    // Lobby handles save internally via SaveSlotPopup — no need to connect saveRequested
+
+    // Connect battle requested
+    QObject::connect(lobby, &LobbyScreen::battleRequested,
+                     [=](const QString &locationId) {
+                         if (locationId == "maple_forest") {
+                             if (playerRecord->currentChapter == 0) {
+                                 startChapter1(screens, playerName, W, H,
+                                               playerRecord, inventory,
+                                               saveManager, shop, partyManager, lobby);
+                             } else if (playerRecord->currentChapter == 1) {
+                                 startChapter2(screens, playerName, W, H,
+                                               playerRecord, inventory,
+                                               saveManager, shop, partyManager, lobby);
+                             } else if (playerRecord->currentChapter == 2) {
+                                 startChapter3(screens, playerName, W, H,
+                                               playerRecord, inventory,
+                                               saveManager, shop, partyManager, lobby);
+                             } else {
+                                 // All chapters completed
+                                 lobby->refreshStats();
+                             }
+                         }
+                         // Tambah location lain nanti (dungeon, sun_castle, dll)
+                     });
+
+    return lobby;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -844,6 +828,51 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
+    // ── Working directory fix (from teammate) — finds assets folder
+    {
+        QDir dir = QDir::current();
+        for (int i = 0; i < 6; ++i) {
+            if (dir.exists("assets")) {
+                QDir::setCurrent(dir.absolutePath());
+                break;
+            }
+            if (!dir.cdUp()) break;
+        }
+    }
+
+    QApplication::setApplicationName("DawnFall");
+    QApplication::setApplicationVersion("1.0");
+    QApplication::setOrganizationName("DawnFallStudio");
+
+    // ── Global stylesheet (from teammate)
+    a.setStyleSheet(R"(
+        QWidget {
+            font-family: 'Bahnschrift', 'Trebuchet MS', sans-serif;
+            font-size: 13px;
+            color: #e2e8f0;
+        }
+        QDialog     { background: #0f172a; }
+        QMessageBox { background: #0f172a; }
+        QMessageBox QLabel { color: #e2e8f0; }
+        QMessageBox QPushButton {
+            background: rgba(255,255,255,12);
+            border: 1px solid rgba(255,255,255,25);
+            border-radius: 6px; color: #e2e8f0;
+            padding: 5px 18px; min-width: 70px;
+        }
+        QMessageBox QPushButton:hover { background: rgba(255,255,255,22); }
+        QScrollBar:vertical {
+            background: rgba(255,255,255,10);
+            width: 6px; border-radius: 3px; margin: 0;
+        }
+        QScrollBar::handle:vertical {
+            background: rgba(255,255,255,40);
+            border-radius: 3px; min-height: 20px;
+        }
+        QScrollBar::add-line:vertical,
+        QScrollBar::sub-line:vertical { height: 0; }
+    )");
+
     QScreen *screen = QApplication::primaryScreen();
     QRect geo = screen->geometry();
     int W = geo.width();
@@ -853,40 +882,65 @@ int main(int argc, char *argv[])
     screens->setWindowTitle("DawnFall");
     screens->showFullScreen();
 
-    MainMenuScreen *menu = new MainMenuScreen();
+    // ── Shared game objects
+    Shop         *shop         = new Shop();
+    Inventory    *inventory    = new Inventory();
+    SaveManager  *saveManager  = new SaveManager();
+    PartyManager *partyManager = new PartyManager();
+
+    // ── PlayerRecord — fresh start, player loads via Load Game menu
+    PlayerRecord *playerRecord = new PlayerRecord();
+    memset(playerRecord, 0, sizeof(PlayerRecord));
+    playerRecord->occupied       = true;
+    playerRecord->currentChapter = 0;
+    playerRecord->coins          = 0;
+    int uidNum = (int)(QDateTime::currentMSecsSinceEpoch() % 10000);
+    snprintf(playerRecord->UID, sizeof(playerRecord->UID), "DF-%04d", uidNum);
+
+    // All characters for lobby/shop/party
+    vector<Character*> allCharacters;
+    allCharacters.push_back(new Warrior("MC",     120, 18, 12, 15));
+    allCharacters.push_back(new Archer("Ethan",   100, 16,  8, 20));
+    allCharacters.push_back(new Tank("Hubert",    160, 14, 18,  8));
+
+    // ── Main menu
+    MainMenuScreen *menu = new MainMenuScreen(
+        *saveManager, *inventory, *shop, *partyManager);
     screens->addWidget(menu);
     screens->setCurrentIndex(0);
 
+    // ── New Game
     QObject::connect(menu, &MainMenuScreen::newGameClicked, [=]() {
+        // Name input overlay
         QWidget *nameOverlay = new QWidget(screens);
         nameOverlay->setGeometry(0, 0, W, H);
         nameOverlay->setStyleSheet("background: rgba(0,0,0,180);");
 
         QLabel *panel = new QLabel(nameOverlay);
-        panel->setGeometry(W / 2 - 200, H / 2 - 100, 400, 200);
-        panel->setStyleSheet("background:#0d0d1a; border:2px solid #ffdd44; border-radius:10px;");
+        panel->setGeometry(W/2 - 200, H/2 - 100, 400, 200);
+        panel->setStyleSheet(
+            "background:#0d0d1a; border:2px solid #ffdd44; border-radius:10px;");
 
         QLabel *title = new QLabel("Enter your name", nameOverlay);
-        title->setGeometry(W / 2 - 180, H / 2 - 80, 360, 30);
+        title->setGeometry(W/2 - 180, H/2 - 80, 360, 30);
         title->setAlignment(Qt::AlignCenter);
-        title->setStyleSheet("color:#ffdd44; font-size:18px; font-weight:bold; font-family:'Courier New';");
+        title->setStyleSheet(
+            "color:#ffdd44; font-size:18px; font-weight:bold; font-family:'Courier New';");
 
         QLineEdit *nameInput = new QLineEdit(nameOverlay);
-        nameInput->setGeometry(W / 2 - 150, H / 2 - 30, 300, 40);
+        nameInput->setGeometry(W/2 - 150, H/2 - 30, 300, 40);
         nameInput->setPlaceholderText("MC");
         nameInput->setMaxLength(20);
         nameInput->setStyleSheet(
             "background:#1a1a2e; color:white; border:2px solid #4a4a8a;"
-            "border-radius:6px; font-size:16px; font-family:'Courier New'; padding:4px;"
-            );
+            "border-radius:6px; font-size:16px; font-family:'Courier New'; padding:4px;");
 
         QPushButton *btnConfirm = new QPushButton("CONFIRM", nameOverlay);
-        btnConfirm->setGeometry(W / 2 - 80, H / 2 + 30, 160, 40);
+        btnConfirm->setGeometry(W/2 - 80, H/2 + 30, 160, 40);
         btnConfirm->setStyleSheet(
             "QPushButton{background:#1a1a2e; color:#ffdd44; border:2px solid #ffdd44;"
             "border-radius:6px; font-size:14px; font-family:'Courier New'; font-weight:bold;}"
-            "QPushButton:hover{background:#ffdd44; color:#0d0d1a;}"
-            );
+            "QPushButton:hover{background:#ffdd44; color:#0d0d1a;}");
 
         nameOverlay->show();
         nameOverlay->raise();
@@ -899,12 +953,40 @@ int main(int argc, char *argv[])
             nameOverlay->hide();
             nameOverlay->deleteLater();
 
-            startChapter1(screens, playerName, W, H);
+            // Reset for new game
+            strncpy(playerRecord->playerUsername,
+                    playerName.toUtf8().constData(),
+                    sizeof(playerRecord->playerUsername) - 1);
+            playerRecord->currentChapter = 0;
+            playerRecord->coins          = 0;
+
+            inventory->setQuantity("Health Potion", 3);
+            inventory->setQuantity("Mega Potion",   1);
+            inventory->setQuantity("Revive Stone",  1);
+            inventory->setCoins(0);
+
+            createLobby(screens, playerName, W, H,
+                        playerRecord, inventory,
+                        saveManager, shop, partyManager, allCharacters);
         });
 
-        QObject::connect(nameInput, &QLineEdit::returnPressed, btnConfirm, &QPushButton::click);
+        QObject::connect(nameInput, &QLineEdit::returnPressed,
+                         btnConfirm, &QPushButton::click);
     });
 
+    // ── Load Game — handled by LoadSlotPopup inside MainMenuScreen
+    QObject::connect(menu, &MainMenuScreen::loadSlotChosen,
+                     [=](int slot, PlayerRecord record) {
+                         Q_UNUSED(slot)
+                         *playerRecord = record;
+                         QString playerName = QString(playerRecord->playerUsername);
+                         if (playerName.isEmpty()) playerName = "MC";
+                         createLobby(screens, playerName, W, H,
+                                     playerRecord, inventory,
+                                     saveManager, shop, partyManager, allCharacters);
+                     });
+
+    // ── Exit
     QObject::connect(menu, &MainMenuScreen::exitClicked, []() {
         QApplication::quit();
     });
