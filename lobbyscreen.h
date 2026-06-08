@@ -124,9 +124,7 @@ private:
     qreal               m_hoverAlpha = 0.0;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
 // QuestPopup
-// ─────────────────────────────────────────────────────────────────────────────
 class QuestPopup : public QDialog
 {
     Q_OBJECT
@@ -153,9 +151,25 @@ private:
     PixmapButton *m_playBtn    = nullptr;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+//Save slot popup
+class SaveSlotPopup : public QDialog
+{
+    Q_OBJECT
+
+public:
+    explicit SaveSlotPopup(SaveManager &saveManager,
+                           QWidget *parent = nullptr);
+
+signals:
+    void slotChosen(int slot);
+
+private:
+    SaveManager &m_saveManager;
+
+    QPushButton *m_slotBtns[3];
+};
+
 // LobbyScreen
-// ─────────────────────────────────────────────────────────────────────────────
 class LobbyScreen : public QWidget
 {
     Q_OBJECT
