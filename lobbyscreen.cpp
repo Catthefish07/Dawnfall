@@ -310,9 +310,93 @@ void QuestPopup::updatePage()
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// LobbyScreen
+// SaveSlotPopup
 // ═════════════════════════════════════════════════════════════════════════════
 
+SaveSlotPopup::SaveSlotPopup(SaveManager &saveManager,
+                             QWidget *parent)
+    : QDialog(parent)
+    , m_saveManager(saveManager)
+{
+    setWindowFlags(Qt::FramelessWindowHint | Qt::Dialog);
+    setModal(true);
+
+    setFixedSize(420, 320);
+
+    setStyleSheet(
+        "QDialog{"
+        "background:#eb94a7;"
+        "border:6px solid #fff29e;"
+        "border-radius:16px;"
+        "}"
+
+        "QLabel{"
+        "color:white;"
+        "background:transparent;"
+        "}"
+
+        "QPushButton{"
+        "background:#6ba0db;"
+        "color:white;"
+        "font-size:15px;"
+        "font-weight:bold;"
+        "border:2px solid #6ea8ff;"
+        "border-radius:12px;"
+        "padding:10px;"
+        "}"
+
+        "QPushButton:hover{"
+        "background:#3d78d8;"
+        "}"
+        );
+
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(25, 25, 25, 25);
+    layout->setSpacing(15);
+
+    QLabel *title = new QLabel("Choose Save Slot");
+    title->setAlignment(Qt::AlignCenter);
+    title->setStyleSheet(
+        "font-size:22px;"
+        "font-weight:bold;"
+        "color:#dbe9ff;"
+        );
+
+    layout->addWidget(title);
+
+    for (int i = 0; i < 3; i++)
+    {
+        QString text;
+
+        if (m_saveManager.isSlotEmpty(i))
+        {
+            text = QString("SLOT %1   •   EMPTY")
+                       .arg(i + 1);
+        }
+        else
+        {
+            text = QString("SLOT %1   •   OCCUPIED")
+                       .arg(i + 1);
+        }
+
+        m_slotBtns[i] = new QPushButton(text);
+
+        connect(m_slotBtns[i],
+                &QPushButton::clicked,
+                this,
+                [this, i]()
+                {
+                    emit slotChosen(i);
+                    accept();
+                });
+
+        layout->addWidget(m_slotBtns[i]);
+    }
+
+    layout->addStretch();
+}
+
+// LobbyScreen
 LobbyScreen::LobbyScreen(PlayerRecord   &playerRecord,
                          vector<Character*> allCharacters,
                          Shop           &shop,
@@ -355,7 +439,7 @@ void LobbyScreen::buildLocations()
 
                 "• Finish Story Chapter 01\n"
                 "• Win the competition\n"
-                "Encounter wolf or whatwhatwhat descriptionnn",
+                "Encounter wolf or what",
 
                 "Chapter 3...\n"
                 "Chapter description blablabla...."
@@ -816,8 +900,46 @@ void LobbyScreen::onPartyClicked()
 
 void LobbyScreen::onSaveClicked()
 {
-    m_saveManager.saveGame(m_saveSlot, m_record, m_inventory, m_shop, m_partyManager);
-    QMessageBox::information(this, "Saved", "Game saved successfully!");
+    SaveSlotPopup popup(m_saveManager, this);
+
+    connect(&popup,
+            &SaveSlotPopup::slotChosen,
+            this,
+            [this](int slot)
+            {
+                if (!m_saveManager.isSlotEmpty(slot))
+                {
+                    auto reply =
+                        QMessageBox::question(
+                            this,
+                            "Overwrite Save",
+                            QString("Overwrite Slot %1?")
+                                .arg(slot + 1));
+
+                    if (reply != QMessageBox::Yes)
+                        return;
+                }
+
+                m_saveManager.saveGame(
+                    slot,
+                    m_record,
+                    m_inventory,
+                    m_shop,
+                    m_partyManager);
+
+                QMessageBox::information(
+                    this,
+                    "Saved",
+                    QString("Game saved to Slot %1!")
+                        .arg(slot + 1));
+            });
+
+    QPoint center = mapToGlobal(rect().center());
+
+    popup.move(center.x() - popup.width()/2,
+               center.y() - popup.height()/2);
+
+    popup.exec();
 }
 
 // ── Avatar picker
