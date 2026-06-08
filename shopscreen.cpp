@@ -25,11 +25,11 @@ void ShopItemCard::buildUi()
     QVBoxLayout *vl = new QVBoxLayout(this);
     vl->setContentsMargins(8, 4, 8, 4);
     vl->setSpacing(0);
-    vl->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+    vl->setAlignment(Qt::AlignVCenter | Qt::AlignHCenter);
 
     // Item icon — use shopBuy_item asset as card bg, icon on top
     m_iconLbl = new QLabel(this);
-    m_iconLbl->setFixedSize(80, 80);
+    m_iconLbl->setFixedSize(90, 90);
     m_iconLbl->setAlignment(Qt::AlignCenter);
     m_iconLbl->setScaledContents(true);
     {
@@ -181,8 +181,16 @@ void ShopCharCard::buildUi()
     vl->addWidget(m_priceLbl);
     vl->addWidget(m_statusLbl);
     vl->addWidget(m_levelLbl);
-    vl->addWidget(m_buyBtn);
-    vl->addWidget(m_upgradeBtn);
+    QHBoxLayout *btnLayout = new QHBoxLayout;
+    btnLayout->setSpacing(5);
+
+    btnLayout->addWidget(m_buyBtn);
+    btnLayout->addWidget(m_upgradeBtn);
+
+    vl->addLayout(btnLayout);
+
+    m_buyBtn->setFixedSize(85, 30);
+    m_upgradeBtn->setFixedSize(105, 30);
 }
 
 void ShopCharCard::setOwned(bool owned)
@@ -278,8 +286,8 @@ void ShopScreen::buildItemPage()
     // The 3 slots start at roughly x=155,y=80 spaced ~270px apart, height ~270px
     QVector<QString> itemNames = {"Health Potion", "Mega Potion", "Revive Stone"};
     QVector<int>     itemPrices = {1500, 3000, 5000};
-    int slotX[3] = {205, 475, 745};
-    int slotY    = 150;
+    int slotX[3] = {150, 500, 850};
+    int slotY    = 230;
 
     for (int i = 0; i < 3; ++i) {
         // Find item in stock
@@ -336,8 +344,8 @@ void ShopScreen::buildCharPage()
     // 6 characters for sale (skip Joy, Ethan, Hubert — they're free/auto)
     // From shop.cpp: Lynn, Ben, Cedric, Kae, Zey, Anak Agung
     // Layout: 3 per row, 2 rows
-    int slotX[3] = {160, 500, 670};
-    int slotY[2] = {100, 340};
+    int slotX[3] = {90, 490, 890};
+    int slotY[2] = {70, 340};
     int cardIdx   = 0;
 
     // get unlocked characters to read their levels
@@ -531,8 +539,9 @@ void ShopScreen::applyStyle()
         #itemPage, #charPage { background: transparent; }
 
         ShopItemCard, ShopCharCard {
-            background: transparent;
-            border: none;
+            background: rgba(250,244,228,0.94);
+            border: 2px solid rgba(150,110,60,0.45);
+            border-radius: 14px;
         }
         #cardName {
             color: #3a2000;
