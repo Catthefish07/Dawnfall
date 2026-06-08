@@ -6,7 +6,7 @@
 class MeleeAttack : public Character
 {
 public:
-    MeleeAttack(std::string name, int maxHP, int attack, int defense, int speed);\
+    MeleeAttack(std::string name, int maxHP, int attack, int defense, int speed);
     AttackType getAttackType() const override;
 };
 
